@@ -5,6 +5,7 @@ import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import logger from '@chaindesk/lib/logger';
 import mailer from '@chaindesk/lib/mailer';
+import { smtpTransport } from 'nodemailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
