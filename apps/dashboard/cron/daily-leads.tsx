@@ -61,7 +61,7 @@ const createReport = async (org: Organization) => {
         content: buffer as Buffer,
       },
     ],
-    html: render(
+    html: mailer.renderMailer(
       <DailyLeads
         nbLeads={rows?.length}
         ctaLink={`${process.env.NEXT_PUBLIC_DASHBOARD_URL}/logs`}
