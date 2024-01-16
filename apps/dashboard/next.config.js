@@ -12,7 +12,7 @@ const nextConfig = {
   publicRuntimeConfig: {
     version: pkg.version,
   },
-  transpilePackages: ['@chaindesk/lib', '@chaindesk/emails'],
+  transpilePackages: ['@chaindesk/lib', '@chaindesk/emails', '@prisma/client'],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
   },
