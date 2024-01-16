@@ -6,7 +6,8 @@ import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import logger from '@chaindesk/lib/logger';
 import mailer from '@chaindesk/lib/mailer';
 import { PrismaClient } from '@prisma/client';
-import { prisma } from '@chaindesk/prisma/client';
+const prisma = new PrismaClient();
+
 
 const createReport = async (org: Organization) => {
   const now = new Date();
