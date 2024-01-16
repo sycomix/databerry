@@ -7,12 +7,12 @@ const pkg = require('../../package.json');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   output: 'standalone',
   publicRuntimeConfig: {
     version: pkg.version,
   },
-  transpilePackages: ['@chaindesk/lib', '@chaindesk/emails'],
+  transpilePackages: ['@chaindesk/lib', '@chaindesk/emails', '@prisma/client'],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
   },
