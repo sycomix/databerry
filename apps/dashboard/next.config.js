@@ -7,7 +7,7 @@ const pkg = require('../../package.json');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   output: 'standalone',
   publicRuntimeConfig: {
     version: pkg.version,
