@@ -1,9 +1,20 @@
 import { DatasourceType } from '@prisma/client';
 import pMap from 'p-map';
-
 import logger from '@chaindesk/lib/logger';
 import triggerTaskLoadDatasource from '@chaindesk/lib/trigger-task-load-datasource';
-import { prisma } from '@chaindesk/prisma/client';
+import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+
+// Load the .env file
+const envFile = fs.readFileSync('./prisma/.env', 'utf8');
+const envLines = envFile.split('\n');
+const env = {};
+envLines.forEach(line => {
+  const [key, value] = line.split('=');
+  env[key] = value;
+});
+
+process.env.DATABASE_URL = env.DATABASE_URL;
 
 (async () => {
   logger.info(`Starting cron job: Sync Datasources`);
