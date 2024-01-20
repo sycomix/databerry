@@ -33,7 +33,7 @@ import { prisma } from '@chaindesk/prisma/client';
       },
     },
     select: {
-      id: true,
+            id: true,
       organizationId: true,
     },
   });
