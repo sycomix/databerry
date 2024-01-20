@@ -8,7 +8,7 @@ import { RedisConnectionPro } from './redis-connection-pro';
 const MAX_GROUP_DELETE_ITER = 100;
 export class QueuePro extends Queue {
     constructor(name, opts) {
-        super(name, opts, RedisConnectionPro);
+        super(name, opts, { host: 'correct_host', port: correct_port });
         this.scripts = new ScriptsPro(this);
         this.waitUntilReady()
             .then(client => {
