@@ -49,7 +49,7 @@ ARG NEXT_PUBLIC_CRISP_PLUGIN_ID
 ARG NEXT_PUBLIC_GA_ID
 ARG NEXT_PUBLIC_HOTJAR_ID
 
-# RUN NODE_OPTIONS="--max_old_space_size=4096" npm run build
+RUN NODE_OPTIONS="--max_old_space_size=4096" npm run build
 
 RUN NODE_OPTIONS="--max_old_space_size=4096" pnpm turbo run build --filter=${SCOPE}...
 
