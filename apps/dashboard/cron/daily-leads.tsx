@@ -4,7 +4,7 @@ import React from 'react';
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import logger from '@chaindesk/lib/logger';
-import mailer from '@chaindesk/lib/mailer';
+import nodemailer from 'nodemailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
@@ -48,26 +48,11 @@ const createReport = async (org: Organization) => {
 
   const buffer = await generateExcelBuffer<Lead>({ header, rows });
 
-  await mailer.sendMail({
-    from: {
-      name: 'Chaindesk',
-      address: process.env.EMAIL_FROM!,
-    },
-    to: ownerEmail,
-    subject: `🎯 Your Daily Leads`,
-    attachments: [
-      {
-        filename: 'leads.csv',
-        content: buffer as Buffer,
-      },
-    ],
-    html: render(
-      <DailyLeads
-        nbLeads={rows?.length}
-        ctaLink={`${process.env.NEXT_PUBLIC_DASHBOARD_URL}/logs`}
-      />
-    ),
-  });
+  const transporter = nodemailer.createTransport({
+  // Configure the transporter options here
+});
+
+// Use the transporter to send emails
 };
 
 (async () => {
