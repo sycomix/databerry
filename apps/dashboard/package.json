@@ -87,7 +87,7 @@
     "multer": "1.4.5-lts.1",
     "next": "13.5.4",
     "next-auth": "^4.24.3",
-    "nodemailer": "^6.9.1",
+    "nodemailer": "^6.9.1", 
     "nprogress": "^0.2.0",
     "openai": "^4.2.0",
     "p-debounce": "^4.0.0",
