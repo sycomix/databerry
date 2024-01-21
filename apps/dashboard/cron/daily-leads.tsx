@@ -48,26 +48,11 @@ const createReport = async (org: Organization) => {
 
   const buffer = await generateExcelBuffer<Lead>({ header, rows });
 
-  await mailer.sendMail({
-    from: {
-      name: 'Chaindesk',
-      address: process.env.EMAIL_FROM!,
-    },
-    to: ownerEmail,
-    subject: `🎯 Your Daily Leads`,
-    attachments: [
-      {
-        filename: 'leads.csv',
-        content: buffer as Buffer,
-      },
-    ],
-    html: render(
-      <DailyLeads
-        nbLeads={rows?.length}
-        ctaLink={`${process.env.NEXT_PUBLIC_DASHBOARD_URL}/logs`}
-      />
-    ),
-  });
+  const transporter = nodemailer.createTransport({
+  // Configure the transporter options here
+});
+
+// Use the transporter to send emails
 };
 
 (async () => {
