@@ -48,7 +48,7 @@ const createReport = async (org: Organization) => {
 
   const buffer = await generateExcelBuffer<Lead>({ header, rows });
 
-  await mailer.sendMail({
+  await createTransport({
     from: {
       name: 'Chaindesk',
       address: process.env.EMAIL_FROM!,
