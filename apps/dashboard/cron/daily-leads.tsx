@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 config();
 import logger from '@chaindesk/lib/logger';
 import { createTransport } from 'nodemailer';
+import { register } from 'node:module';
 import { createTransport } from 'nodemailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
