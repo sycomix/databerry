@@ -3,6 +3,9 @@ import React from 'react';
 
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
+import { config } from 'dotenv';
+
+config();
 import logger from '@chaindesk/lib/logger';
 import { createTransport } from 'nodemailer';
 import { createTransport } from 'nodemailer';
