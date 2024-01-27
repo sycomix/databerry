@@ -4,6 +4,7 @@ import React from 'react';
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import { config } from 'dotenv';
+import { pathToFileURL } from 'node:url';
 
 config();
 import logger from '@chaindesk/lib/logger';
