@@ -60,9 +60,9 @@ export default function StandalonePageSettings(props: Props) {
         },
       }}
     >
-      {({ query, mutation }) => {
+      {({ formState, register, watch, setValue, setError, query, mutation }) => {
         return (
-          <ConnectForm<UpdateAgentSchema>>
+          <ConnectForm<UpdateAgentSchema> formState={formState} register={register} watch={watch} setValue={setValue} setError={setError}>
             {({ formState, register, watch, setValue, trigger, setError }) => {
               const botHandle = watch('handle');
               const pageURL = `${process.env.NEXT_PUBLIC_DASHBOARD_URL?.replace(
@@ -274,19 +274,21 @@ export default function StandalonePageSettings(props: Props) {
                                 {...register('interfaceConfig.youtubeURL')}
                               />
                             </FormControl>
+import GitHubIcon from '@mui/icons-material/GitHub';
                             <FormControl>
                               <FormLabel>GitHub</FormLabel>
                               <Input
                                 startDecorator={<GitHubIcon />}
-                                placeholder="GitHub"
+                                placeholder="Enter the GitHub URL"
                                 {...register('interfaceConfig.githubURL')}
                               />
                             </FormControl>
+import WebIcon from '@mui/icons-material/Language';
                             <FormControl>
                               <FormLabel>Website</FormLabel>
                               <Input
                                 startDecorator={<WebIcon />}
-                                placeholder="Website"
+                                placeholder="Enter the Website URL"
                                 {...register('interfaceConfig.websiteURL')}
                               />
                             </FormControl>
