@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 const prisma = new PrismaClient();
 
   const ownerEmail = (org as any).memberships[0].user.email as string;
