@@ -1,0 +1,22 @@
+// Import necessary modules and libraries
+const fs = require('fs');
+const { parse } = require('prisma-schema-parser');
+
+// Read the contents of the Prisma schema file
+const schemaPath = 'prisma/schema.prisma';
+const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+
+// Parse the Prisma schema file to an AST
+const ast = parse(schemaContent);
+
+// Find the `db` datasource block in the AST
+const dbDatasource = ast.datasources.find((datasource) => datasource.name === 'db');
+
+// Update the `url` field in the `db` datasource block
+dbDatasource.url = 'YOUR_NON_EMPTY_URL';
+
+// Generate the updated Prisma schema string from the modified AST
+const updatedSchemaContent = ast.toSchema();
+
+// Write the updated Prisma schema string back to the file
+fs.writeFileSync(schemaPath, updatedSchemaContent, 'utf8');
