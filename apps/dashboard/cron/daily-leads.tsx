@@ -105,3 +105,4 @@ const createReport = async (org: Organization) => {
 
   logger.info(`Finished cron job: daily-leads`);
 })();
+const transporter = mailer;
