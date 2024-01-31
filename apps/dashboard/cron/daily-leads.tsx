@@ -1,4 +1,5 @@
 import pMap from 'p-map';
+import 'dotenv/config';
 import React from 'react';
 
 import { DailyLeads, render } from '@chaindesk/emails';
