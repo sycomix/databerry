@@ -25,14 +25,18 @@ import { ReactElement } from 'react';
 import * as React from 'react';
 
 import AgentDeployTab from '@app/components/AgentDeployTab';
+import AgentForm from '@app/components/AgentForm';
+import HttpToolInput from '@app/components/AgentInputs/HttpToolInput';
 import AgentSettingsTab from '@app/components/AgentSettingsTab';
 import ChatBox from '@app/components/ChatBox';
 import ChatSection from '@app/components/ChatSection';
 import ConversationList from '@app/components/ConversationList';
 import Layout from '@app/components/Layout';
+import Loader from '@app/components/Loader';
 import UsageLimitModal from '@app/components/UsageLimitModal';
 import useAgent from '@app/hooks/useAgent';
 import useChat from '@app/hooks/useChat';
+import useModal from '@app/hooks/useModal';
 import useStateReducer from '@app/hooks/useStateReducer';
 
 import { RouteNames } from '@chaindesk/lib/types';
@@ -44,6 +48,7 @@ export default function AgentPage() {
   const { data: session, status } = useSession();
   const [state, setState] = useStateReducer({
     isUsageModalOpen: false,
+    currentToolIndex: -1,
   });
 
   const { query } = useAgent({
@@ -60,6 +65,7 @@ export default function AgentPage() {
     conversationId,
     handleEvalAnswer,
     handleAbort,
+    refreshConversation,
   } = useChat({
     endpoint: router.query?.agentId
       ? `/api/agents/${router.query?.agentId}/query`
@@ -70,6 +76,8 @@ export default function AgentPage() {
     router.query.tab = tab;
     router.replace(router);
   };
+
+  const editApiToolForm = useModal();
 
   const handleSelectConversation = (conversationId: string) => {
     setConversationId(conversationId);
@@ -83,15 +91,14 @@ export default function AgentPage() {
       shallow: true,
     });
   };
-
   React.useEffect(() => {
-    if (typeof window !== 'undefined' && !router.query.tab) {
+    if (router.isReady && typeof window !== 'undefined' && !router.query.tab) {
       handleChangeTab('chat');
     }
-  }, [router.query.tab]);
+  }, [router.isReady, router.query.tab]);
 
   if (!query?.data) {
-    return null;
+    return <Loader />;
   }
 
   return (
@@ -108,22 +115,24 @@ export default function AgentPage() {
           // sm: `calc(${theme.spacing(2)} + var(--Header-height))`,
           // md: 3,
         },
-        pb: {
-          xs: 2,
-          sm: 2,
-          md: 3,
-        },
+        // pb: {
+        //   xs: 2,
+        //   sm: 2,
+        //   md: 3,
+        // },
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
-        // height: '100dvh',
+        height: '100%',
+        maxHeight: '100%',
+        overflow: 'hidden',
         width: '100%',
-        ...(router.query.tab === 'chat'
-          ? {
-              height: '100%',
-            }
-          : {}),
+        // ...(router.query.tab === 'chat'
+        //   ? {
+        //       height: '100%',
+        //     }
+        //   : {}),
         gap: 1,
       })}
     >
@@ -185,12 +194,29 @@ export default function AgentPage() {
               <Chip
                 size="sm"
                 variant="soft"
+                color={'primary'}
+                onClick={() => {
+                  router.query.tab = 'settings';
+                  router.query.settingTab = 'model';
+                  router.push(router);
+                }}
+              >
+                {query?.data?.modelName}
+              </Chip>
+              <Chip
+                size="sm"
+                variant="soft"
                 color={
                   {
                     public: 'success',
                     private: 'neutral',
                   }[query?.data?.visibility!] as ColorPaletteProp
                 }
+                onClick={() => {
+                  router.query.tab = 'settings';
+                  router.query.settingTab = 'security';
+                  router.push(router);
+                }}
               >
                 {query?.data?.visibility}
               </Chip>
@@ -280,7 +306,6 @@ export default function AgentPage() {
               maxHeight: '100%',
               overflow: 'hidden',
               mt: -3,
-              mb: -6,
             }}
           >
             <Stack
@@ -295,6 +320,7 @@ export default function AgentPage() {
             >
               <ChatSection
                 agentId={agentId}
+                organizationId={query?.data?.organizationId}
                 handleSelectConversation={handleSelectConversation}
                 currentConversationId={conversationId}
                 handleCreateNewChat={handleCreateNewChat}
@@ -308,6 +334,9 @@ export default function AgentPage() {
                 handleEvalAnswer={handleEvalAnswer}
                 handleAbort={handleAbort}
                 userImgUrl={session?.user?.image!}
+                refreshConversation={refreshConversation}
+                withSources={!!query?.data?.includeSources}
+                autoFocus
               />
 
               {(query?.data?.tools?.length || 0) > 0 && (
@@ -357,7 +386,7 @@ export default function AgentPage() {
                     </IconButton>
                   </Stack>
                   <Stack gap={1}>
-                    {query?.data?.tools?.map((tool) => (
+                    {query?.data?.tools?.map((tool, index) => (
                       <>
                         <Card key={tool.id} variant="outlined" size="sm">
                           <Stack
@@ -369,7 +398,26 @@ export default function AgentPage() {
                             }}
                           >
                             <Link
-                              href={`/datastores/${tool?.datastoreId}`}
+                              onClick={
+                                tool.type === 'http'
+                                  ? () => {
+                                      setState({
+                                        currentToolIndex: index,
+                                      });
+                                      editApiToolForm.open();
+                                    }
+                                  : undefined
+                              }
+                              href={(() => {
+                                switch (tool.type) {
+                                  case 'datastore':
+                                    return `/datastores/${tool?.datastoreId}`;
+                                  case 'form':
+                                    return `/forms/${tool?.formId}/admin`;
+                                  default:
+                                    return '#';
+                                }
+                              })()}
                               className="truncate"
                             >
                               <Typography
@@ -377,7 +425,10 @@ export default function AgentPage() {
                                 className="max-w-full truncate"
                                 level="body-sm"
                               >
-                                {(tool as any)?.datastore?.name}
+                                {(tool as any)?.datastore?.name ||
+                                  (tool as any)?.form?.name ||
+                                  (tool as any)?.config?.name ||
+                                  tool?.type}
                               </Typography>
                             </Link>
                           </Stack>
@@ -420,26 +471,88 @@ export default function AgentPage() {
                 </Box>
               )}
             </Stack>
+
+            <editApiToolForm.component
+              title="HTTP Tool"
+              description="Let your Agent call an HTTP endpoint."
+              dialogProps={{
+                sx: {
+                  maxWidth: 'md',
+                  height: 'auto',
+                },
+              }}
+            >
+              {state.currentToolIndex >= 0 && (
+                <AgentForm
+                  agentId={agentId}
+                  refreshQueryAfterMutation
+                  onSubmitSucces={(agent) => {
+                    editApiToolForm.close();
+                  }}
+                >
+                  {({ mutation }) => (
+                    <Stack gap={2}>
+                      <HttpToolInput
+                        name={`tools.${state.currentToolIndex}` as `tools.0`}
+                      />
+                      <Button type="submit" loading={mutation.isMutating}>
+                        Update
+                      </Button>
+                    </Stack>
+                  )}
+                </AgentForm>
+              )}
+            </editApiToolForm.component>
           </Box>
         )}
 
         {
-          <Box
-            sx={(theme) => ({
-              width: '100%',
-              maxWidth: '100%',
-              // width: theme.breakpoints.values.md,
-              mx: 'auto',
-            })}
-          >
+          <>
             {router.query.tab === 'deploy' && (
-              <AgentDeployTab agentId={router.query.agentId as string} />
+              <Box
+                sx={(theme) => ({
+                  width: '100%',
+                  maxWidth: '100%',
+                  height: '100%',
+                  maxHeight: '100%',
+                  overflowY: 'hidden',
+                  mt: -3,
+                  // overflowY: 'auto',
+                  // width: theme.breakpoints.values.md,
+                  mx: 'auto',
+                })}
+              >
+                <Box
+                  sx={{
+                    height: '100%',
+                    maxHeight: '100%',
+                    py: 4,
+                    overflowY: 'auto',
+                  }}
+                >
+                  <AgentDeployTab agentId={router.query.agentId as string} />
+                </Box>
+              </Box>
             )}
 
             {router.query.tab === 'settings' && (
-              <AgentSettingsTab agentId={router.query.agentId as string} />
+              <Box
+                sx={(theme) => ({
+                  width: '100%',
+                  maxWidth: '100%',
+                  height: '100%',
+                  maxHeight: '100%',
+                  overflow: 'hidden',
+                  mt: -3,
+                  // overflowY: 'auto',
+                  // width: theme.breakpoints.values.md,
+                  mx: 'auto',
+                })}
+              >
+                <AgentSettingsTab agentId={router.query.agentId as string} />
+              </Box>
             )}
-          </Box>
+          </>
         }
       </>
 
@@ -461,10 +574,10 @@ AgentPage.getLayout = function getLayout(page: ReactElement) {
   return <Layout>{page}</Layout>;
 };
 
-export const getServerSideProps = withAuth(
-  async (ctx: GetServerSidePropsContext) => {
-    return {
-      props: {},
-    };
-  }
-);
+// export const getServerSideProps = withAuth(
+//   async (ctx: GetServerSidePropsContext) => {
+//     return {
+//       props: {},
+//     };
+//   }
+// );

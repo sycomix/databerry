@@ -38,12 +38,27 @@ const options: DatsourceOption[] = [
     icon: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/1024px-Google_Drive_icon_%282020%29.svg.png?20221103153031',
   },
   {
+    type: 'youtube_video',
+    label: 'Youtube',
+    description:
+      'Paste a youtube video, playlist or channel and make it your source of knowlege',
+    disabled: false,
+    icon: 'https://www.svgrepo.com/show/13671/youtube.svg',
+    isPremium: true,
+  },
+  {
     type: 'notion' as any,
     label: 'Notion',
     description: 'Connect your Notion workspace',
     icon: 'https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg',
     disabled: false,
     isPremium: true,
+  },
+  {
+    type: DatasourceType.qa,
+    label: 'Q&A',
+    description: 'Improve Answers with explicit Q&A pairs',
+    disabled: false,
   },
   {
     type: DatasourceType.text,
@@ -62,12 +77,6 @@ const options: DatsourceOption[] = [
     label: 'Web Page',
     description: 'Crawl text from a single web page',
     icon: undefined,
-  },
-  {
-    type: DatasourceType.qa,
-    label: 'Q&A',
-    description: 'Improve Answers with explicit Q&A content',
-    disabled: false,
   },
 ];
 

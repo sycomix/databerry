@@ -48,7 +48,9 @@ const prisma = new PrismaClient();
     where: {
       subscriptions: {
         some: {
-          status: 'active',
+          status: {
+            in: ['active', 'trialing'],
+          },
         },
       },
     },

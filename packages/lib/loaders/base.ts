@@ -12,7 +12,9 @@ const datasourceExtended = Prisma.validator<Prisma.AppDatasourceArgs>()({
         usage: true,
         subscriptions: {
           where: {
-            status: 'active',
+            status: {
+              in: ['active', 'trialing'],
+            },
           },
         },
       },
@@ -32,7 +34,7 @@ export abstract class DatasourceLoaderBase<T extends {} = DatasourceSchema> {
   }
 
   async importLoaders() {
-    return await import('langchain/document_loaders');
+    return await import('langchain/document_loaders/base');
   }
 
   abstract getSize(param?: any): Promise<number>;

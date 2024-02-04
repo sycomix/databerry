@@ -7,3 +7,17 @@
   outline: none;
 }
 
+.medium-zoom-overlay,
+.medium-zoom-image--opened {
+  z-index: 99999;
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  kbd {
+    @apply px-0.5 py-0.5 text-current text-white bg-opacity-50 rounded-sm bg-zinc-600;
+  }
+}

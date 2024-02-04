@@ -70,10 +70,10 @@ export default function DatastorePage() {
   };
 
   React.useEffect(() => {
-    if (typeof window !== 'undefined' && !router.query.tab) {
+    if (router.isReady && typeof window !== 'undefined' && !router.query.tab) {
       handleChangeTab('datasources');
     }
-  }, [router.query.tab]);
+  }, [router.isReady, router.query.tab]);
 
   if (!getDatastoreQuery?.data) {
     return (
@@ -106,7 +106,7 @@ export default function DatastorePage() {
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
-        // height: '100dvh',
+        height: '100%',
         width: '100%',
         gap: 1,
       })}
@@ -302,7 +302,16 @@ export default function DatastorePage() {
         )}
 
         {getDatastoreQuery?.data && router.query.tab === 'settings' && (
-          <DatastoreSettings />
+          <Box
+            sx={{
+              height: '100%',
+              overflowY: 'scroll',
+              mt: -5,
+              pt: 4,
+            }}
+          >
+            <DatastoreSettings />
+          </Box>
         )}
 
         <CreateDatasourceModal
@@ -336,10 +345,10 @@ DatastorePage.getLayout = function getLayout(page: ReactElement) {
   return <Layout>{page}</Layout>;
 };
 
-export const getServerSideProps = withAuth(
-  async (ctx: GetServerSidePropsContext) => {
-    return {
-      props: {},
-    };
-  }
-);
+// export const getServerSideProps = withAuth(
+//   async (ctx: GetServerSidePropsContext) => {
+//     return {
+//       props: {},
+//     };
+//   }
+// );

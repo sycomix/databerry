@@ -12,25 +12,39 @@ import Option from '@mui/joy/Option';
 import Select from '@mui/joy/Select';
 import Stack from '@mui/joy/Stack';
 import Typography from '@mui/joy/Typography';
+import clsx from 'clsx';
+import cuid from 'cuid';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import useSWR from 'swr';
 
 import useModal from '@app/hooks/useModal';
 import { getDatastores } from '@app/pages/api/datastores';
 
-import { createTool, NormalizedTool } from '@chaindesk/lib/agent-tool-format';
+import agentToolFormat, {
+  createTool,
+  NormalizedTool,
+} from '@chaindesk/lib/agent-tool-format';
 import { fetcher } from '@chaindesk/lib/swr-fetcher';
 import { RouteNames } from '@chaindesk/lib/types';
-import { CreateAgentSchema } from '@chaindesk/lib/types/dtos';
+import { CreateAgentSchema, ToolSchema } from '@chaindesk/lib/types/dtos';
 import {
   AppDatasource as Datasource,
+  Form,
   Prisma,
+  Tool,
   ToolType,
 } from '@chaindesk/prisma';
-type Props = {};
+
+import HttpToolForm from '../HttpToolForm';
+
+import FormToolInput from './FormToolInput';
+import HttpToolInput from './HttpToolInput';
+type Props = {
+  onHttpToolClick?: (index: number) => any;
+};
 
 const CreateDatastoreModal = dynamic(
   () => import('@app/components/CreateDatastoreModal'),
@@ -69,7 +83,15 @@ const ToolCard = (props: ToolCardProps) => {
                   <Typography level="body-md">{props.name}</Typography>
                 </Link>
               ) : (
-                <Typography level="body-md">{props.name}</Typography>
+                <Typography
+                  level="body-md"
+                  className={clsx({
+                    underline: !!props.onClick,
+                    'cursor-pointer': !!props.onClick,
+                  })}
+                >
+                  {props.name}
+                </Typography>
               )}
             </Stack>
             {props.type && (
@@ -90,17 +112,37 @@ const ToolCard = (props: ToolCardProps) => {
 };
 
 function ToolsInput({}: Props) {
-  const { watch, setValue, register } = useFormContext<CreateAgentSchema>();
+  const { watch, setValue, register, formState } =
+    useFormContext<CreateAgentSchema>();
   const [isCreateDatastoreModalOpen, setIsCreateDatastoreModalOpen] =
     useState(false);
+  const btnSubmitRef = useRef<HTMLButtonElement>(null);
+
+  const [currentToolIndex, setCurrentToolIndex] = useState(-1);
 
   const newDatastoreModal = useModal();
+  const newApiToolForm = useModal();
+  const newFormToolModal = useModal();
+  const editApiToolForm = useModal();
 
   const getDatastoresQuery = useSWR<
     Prisma.PromiseReturnType<typeof getDatastores>
   >('/api/datastores', fetcher);
 
   const tools = watch('tools') || [];
+
+  const formattedTools = tools.map(agentToolFormat);
+
+  const getToolLink = (tool: Tool) => {
+    switch (tool.type) {
+      case ToolType.datastore:
+        return `${RouteNames.DATASTORES}/${tool.datastoreId}`;
+      case ToolType.form:
+        return `${RouteNames.FORMS}/${tool.formId}/admin`;
+      default:
+        return undefined;
+    }
+  };
 
   return (
     <Stack gap={1}>
@@ -116,23 +158,33 @@ function ToolsInput({}: Props) {
       )}
 
       <Stack direction={'row'} gap={1} flexWrap={'wrap'}>
-        {tools.map((tool) => (
+        {formattedTools.map((tool, index) => (
           <ToolCard
             key={tool.id}
             id={tool.id}
             type={tool.type}
             name={tool.name!}
             description={tool.description!}
-            link={`${RouteNames.DATASTORES}/${tool.datastoreId}`}
+            onClick={
+              tool.type === 'http'
+                ? () => {
+                    setCurrentToolIndex(index);
+                    editApiToolForm.open();
+                  }
+                : undefined
+            }
+            link={getToolLink(tool)}
           >
             <IconButton
               variant="plain"
               color="danger"
               size="sm"
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 setValue(
                   'tools',
-                  tools.filter((each) => each.datastoreId !== tool.datastoreId),
+                  tools.filter((each) => each.id !== tool.id),
                   {
                     shouldDirty: true,
                     shouldValidate: true,
@@ -149,7 +201,7 @@ function ToolsInput({}: Props) {
       <Divider sx={{ my: 2 }} />
 
       <ToolCard
-        id="42"
+        id="datastore-tool"
         name={'Datastore'}
         description={'Connect custom data to your Agent'}
       >
@@ -159,6 +211,40 @@ function ToolsInput({}: Props) {
           color="success"
           onClick={() => {
             newDatastoreModal.open();
+          }}
+        >
+          <AddCircleOutlineRoundedIcon />
+        </IconButton>
+      </ToolCard>
+
+      <ToolCard
+        id="http-tool"
+        name={'HTTP Tool'}
+        description={'Perform an HTTP request from your Agent'}
+      >
+        <IconButton
+          size="sm"
+          variant="plain"
+          color="success"
+          onClick={() => {
+            newApiToolForm.open();
+          }}
+        >
+          <AddCircleOutlineRoundedIcon />
+        </IconButton>
+      </ToolCard>
+
+      <ToolCard
+        id="form-tool"
+        name={'Form'}
+        description={'Connect a form to your Agent'}
+      >
+        <IconButton
+          size="sm"
+          variant="plain"
+          color="success"
+          onClick={() => {
+            newFormToolModal.open();
           }}
         >
           <AddCircleOutlineRoundedIcon />
@@ -193,8 +279,7 @@ function ToolsInput({}: Props) {
                     createTool({
                       type: ToolType.datastore,
                       datastoreId: datastore.id,
-                      name: datastore?.name,
-                      description: datastore?.description!,
+                      datastore,
                     }),
                   ],
                   {
@@ -210,7 +295,8 @@ function ToolsInput({}: Props) {
             {getDatastoresQuery.data
               ?.filter(
                 // Don't show already selected datastores
-                (each) => !tools.find((one) => one.datastoreId === each.id)
+                (each) =>
+                  !tools.find((one) => (one as any).datastoreId === each.id)
               )
               ?.map((datastore) => (
                 <Option key={datastore.id} value={datastore.id}>
@@ -235,6 +321,60 @@ function ToolsInput({}: Props) {
         </Stack>
       </newDatastoreModal.component>
 
+      <newApiToolForm.component
+        title="HTTP Tool"
+        description="Let your Agent call an HTTP endpoint."
+        dialogProps={{
+          sx: {
+            maxWidth: 'md',
+            height: 'auto',
+          },
+        }}
+      >
+        <HttpToolForm
+          onSubmit={(values) => {
+            setValue('tools', [...tools, createTool(values)], {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+            newApiToolForm.close();
+          }}
+        />
+      </newApiToolForm.component>
+
+      <newFormToolModal.component
+        title="Form Tool"
+        description="Connect a Form to your Agent"
+        dialogProps={{
+          sx: {
+            maxWidth: 'sm',
+            height: 'auto',
+          },
+        }}
+      >
+        <FormToolInput
+          onChange={(form: Form) => {
+            setValue(
+              'tools',
+              [
+                ...tools,
+                createTool({
+                  type: ToolType.form,
+                  formId: form.id,
+                  form: form,
+                }),
+              ],
+              {
+                shouldDirty: true,
+                shouldValidate: true,
+              }
+            );
+
+            newFormToolModal.close();
+          }}
+        />
+      </newFormToolModal.component>
+
       <CreateDatastoreModal
         isOpen={isCreateDatastoreModalOpen}
         onSubmitSuccess={(newDatatore) => {
@@ -247,10 +387,9 @@ function ToolsInput({}: Props) {
             [
               ...tools,
               {
-                id: newDatatore.id!,
+                id: cuid(),
                 datastoreId: newDatatore.id!,
-                name: newDatatore.name!,
-                description: newDatatore.description!,
+                datastore: newDatatore,
                 type: ToolType.datastore,
               },
             ],
@@ -264,6 +403,42 @@ function ToolsInput({}: Props) {
           setIsCreateDatastoreModalOpen(false);
         }}
       />
+
+      <editApiToolForm.component
+        title="HTTP Tool"
+        description="Let your Agent call an HTTP endpoint."
+        dialogProps={{
+          sx: {
+            maxWidth: 'md',
+            height: 'auto',
+          },
+        }}
+      >
+        {currentToolIndex >= 0 && (
+          <Stack gap={2}>
+            <HttpToolInput name={`tools.${currentToolIndex}` as `tools.0`} />
+            <Button
+              type="button"
+              loading={formState.isSubmitting}
+              onClick={() => {
+                editApiToolForm.close();
+                btnSubmitRef?.current?.click();
+              }}
+            >
+              Update
+            </Button>
+          </Stack>
+        )}
+      </editApiToolForm.component>
+
+      {/* Trick to submit form from HttpToolInput modal */}
+      <button
+        ref={btnSubmitRef}
+        type="submit"
+        style={{ width: 0, height: 0, visibility: 'hidden' }}
+      >
+        submit
+      </button>
     </Stack>
   );
 }

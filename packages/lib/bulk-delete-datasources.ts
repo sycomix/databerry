@@ -20,33 +20,27 @@ const bulkDeleteDatasources = async (props: {
     throw new Error('Datastore not found');
   }
 
-  const deleted = await prisma.$transaction(async (tx) => {
-    // Remove from QDrant
-    await new DatastoreManager(datastore!).removeBulk(props.datasourceIds);
+  await new DatastoreManager(datastore!).removeBulk(props.datasourceIds);
 
-    // Remove from S3
-    // TODO: how to bulk delete s3 folders
-    await pMap(
-      props.datasourceIds,
-      async (id) => {
-        return deleteFolderFromS3Bucket(
-          process.env.NEXT_PUBLIC_S3_BUCKET_NAME!,
-          `datastores/${props.datastoreId}/${id}`
-        );
-      },
-      {
-        concurrency: 10,
-      }
-    );
+  await pMap(
+    props.datasourceIds,
+    async (id) => {
+      return deleteFolderFromS3Bucket(
+        process.env.NEXT_PUBLIC_S3_BUCKET_NAME!,
+        `datastores/${props.datastoreId}/${id}`
+      );
+    },
+    {
+      concurrency: 10,
+    }
+  );
 
-    // Remove from DB
-    return tx.appDatasource.deleteMany({
-      where: {
-        id: {
-          in: props.datasourceIds,
-        },
+  const deleted = await prisma.appDatasource.deleteMany({
+    where: {
+      id: {
+        in: props.datasourceIds,
       },
-    });
+    },
   });
 
   return deleted;

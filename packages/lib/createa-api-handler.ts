@@ -40,10 +40,12 @@ export function respond<T>(f: Handle<T>) {
     try {
       const result = await f(req, res);
 
-      if (!req?.body?.streaming) {
-        res.json(result);
-      } else {
-        res.end();
+      if (!res.writableEnded) {
+        if (!req?.body?.streaming) {
+          res.json(result);
+        } else {
+          res.end();
+        }
       }
     } catch (err) {
       console.log(err);
@@ -53,6 +55,8 @@ export function respond<T>(f: Handle<T>) {
 
       if (err instanceof ApiError) {
         message = err.message;
+      } else if ((err as any)?.message) {
+        message = (err as any).message;
       } else {
         message = (err as any).toString
           ? (err as any).toString()

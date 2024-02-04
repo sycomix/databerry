@@ -14,12 +14,24 @@ export const getStatus = async (
 ) => {
   let dbCheck = AppStatus.OK;
   let vectorDbCheck = AppStatus.OK;
+  let openAICheck = AppStatus.OK;
   const { publicRuntimeConfig } = getConfig();
 
   try {
     await prisma.user.count();
   } catch {
     dbCheck = AppStatus.KO;
+  }
+
+  try {
+    const { data } = await axios.get(
+      'https://status.openai.com/api/v2/status.json'
+    );
+    if (data.status.indicator === 'major') {
+      openAICheck = AppStatus.KO;
+    }
+  } catch {
+    openAICheck = AppStatus.KO;
   }
 
   try {
@@ -37,9 +49,14 @@ export const getStatus = async (
 
   let status = AppStatus.OK;
 
-  if (dbCheck === AppStatus.KO || vectorDbCheck === AppStatus.KO) {
+  if (
+    dbCheck === AppStatus.KO ||
+    vectorDbCheck === AppStatus.KO ||
+    openAICheck === AppStatus.KO
+  ) {
     status = AppStatus.WARNING;
   }
+
   if (dbCheck === AppStatus.KO && vectorDbCheck === AppStatus.KO) {
     status = AppStatus.KO;
   }
@@ -48,6 +65,7 @@ export const getStatus = async (
     status,
     db: dbCheck,
     vectorDb: vectorDbCheck,
+    openAI: openAICheck,
     isMaintenance: process.env.MAINTENANCE_MODE === 'true',
     latestVersion: publicRuntimeConfig.version,
   };

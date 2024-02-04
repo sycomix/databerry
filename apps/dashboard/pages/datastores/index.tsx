@@ -88,8 +88,9 @@ export default function DatasourcesPage() {
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
-        // height: '100dvh',
+        height: '100%',
         width: '100%',
+        overflowY: 'auto',
         gap: 1,
       })}
     >
@@ -200,8 +201,8 @@ DatasourcesPage.getLayout = function getLayout(page: ReactElement) {
   return <Layout>{page}</Layout>;
 };
 
-export const getServerSideProps = withAuth(async (ctx) => {
-  return {
-    props: {},
-  };
-});
+// export const getServerSideProps = withAuth(async (ctx) => {
+//   return {
+//     props: {},
+//   };
+// });

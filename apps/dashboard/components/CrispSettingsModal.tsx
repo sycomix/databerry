@@ -28,7 +28,7 @@ import { z } from 'zod';
 
 import useStateReducer from '@app/hooks/useStateReducer';
 import { getAgents } from '@app/pages/api/agents';
-import { getCrispIntegrations } from '@app/pages/api/integrations/crisp/[agentId]';
+import { getServiceProviders } from '@app/pages/api/service-providers';
 
 import { fetcher } from '@chaindesk/lib/swr-fetcher';
 import { Prisma } from '@chaindesk/prisma';
@@ -49,24 +49,20 @@ export default function CrispSettingsModal(props: Props) {
   });
   const router = useRouter();
   const getCrispIntegrationsQuery = useSWR<
-    Prisma.PromiseReturnType<typeof getCrispIntegrations>
-  >(`/api/integrations/crisp/${props.agentId}`, fetcher);
+    Prisma.PromiseReturnType<typeof getServiceProviders>
+  >(`/api/service-providers?type=crisp&agentId=${props.agentId}`, fetcher);
 
   const onSubmit = () => {
-    router.push(
-      `https://app.crisp.chat/initiate/plugin/${process.env.NEXT_PUBLIC_CRISP_PLUGIN_ID}/`
-    ),
-      '_blank';
+    window.open(
+      `https://app.crisp.chat/initiate/plugin/${process.env.NEXT_PUBLIC_CRISP_PLUGIN_ID}/`,
+      '_blank'
+    );
   };
 
   const handleDelete = async (id: string) => {
     try {
       setState({ isDeleteLoading: true });
-      await axios.delete(`/api/integrations/crisp/${props.agentId}`, {
-        data: {
-          id,
-        },
-      });
+      await axios.delete(`/api/service-providers/${id}`);
       getCrispIntegrationsQuery.mutate();
     } catch (err) {
       console.log(err);
@@ -109,8 +105,8 @@ export default function CrispSettingsModal(props: Props) {
                 {getCrispIntegrationsQuery.data?.map((each, index) => (
                   <ListItem key={index}>
                     <Typography className="truncate">
-                      {((each as any)?.metadata as any)?.domain ||
-                        each.integrationId}
+                      {((each as any)?.config as any)?.domain ||
+                        each.externalId}
                     </Typography>
 
                     <IconButton
