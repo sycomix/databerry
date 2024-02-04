@@ -48,7 +48,9 @@ export const capture = async (req: AppNextApiRequest, res: NextApiResponse) => {
           },
           subscriptions: {
             where: {
-              status: 'active',
+              status: {
+                in: ['active', 'trialing'],
+              },
             },
           },
         },
@@ -78,6 +80,39 @@ export const capture = async (req: AppNextApiRequest, res: NextApiResponse) => {
   }
 
   await Promise.all([
+    prisma.contact.upsert({
+      where: {
+        unique_email_for_org: {
+          email: data.visitorEmail,
+          organizationId: agent?.organizationId!,
+        },
+      },
+      create: {
+        email: data.visitorEmail,
+        agent: {
+          connect: {
+            id: agentId,
+          },
+        },
+        organization: {
+          connect: {
+            id: agent?.organizationId!,
+          },
+        },
+        conversations: {
+          connect: {
+            id: data.conversationId,
+          },
+        },
+      },
+      update: {
+        conversations: {
+          connect: {
+            id: data.conversationId,
+          },
+        },
+      },
+    }),
     prisma.lead.create({
       data: {
         email: data.visitorEmail,
@@ -112,7 +147,7 @@ export const capture = async (req: AppNextApiRequest, res: NextApiResponse) => {
           messages={agent?.conversations?.[0]?.messages}
           ctaLink={`${
             process.env.NEXT_PUBLIC_DASHBOARD_URL
-          }/logs?tab=all&conversationId=${encodeURIComponent(
+          }/logs?tab=all&targetConversationId=${encodeURIComponent(
             data.conversationId
           )}&targetOrgId=${encodeURIComponent(agent.organizationId!)}`}
         />

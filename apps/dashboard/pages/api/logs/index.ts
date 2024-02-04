@@ -1,8 +1,14 @@
-import { ConversationStatus, Prisma } from '@prisma/client';
+import {
+  ConversationChannel,
+  ConversationPriority,
+  ConversationStatus,
+  Prisma,
+} from '@prisma/client';
 import { NextApiResponse } from 'next';
 
 import { MessageEvalUnion } from '@app/hooks/useChat';
 
+import { AnalyticsEvents, capture } from '@chaindesk/lib/analytics-server';
 import {
   createAuthApiHandler,
   respond,
@@ -15,8 +21,11 @@ const handler = createAuthApiHandler();
 export const getLogs = async (req: AppNextApiRequest, res: NextApiResponse) => {
   const session = req.session;
   const evalFilter = req.query.eval as MessageEvalUnion;
+  const channelFilter = req.query.channel as ConversationChannel;
   const agentId = req.query.agentId as string;
   const conversationStatus = req.query.status as ConversationStatus | undefined;
+  const priority = req.query.priority as ConversationPriority | undefined;
+  const assigneeId = req.query.assigneeId as string | undefined;
   const unread = req.query.unread;
 
   const cursor = req.query.cursor as string;
@@ -25,10 +34,22 @@ export const getLogs = async (req: AppNextApiRequest, res: NextApiResponse) => {
     where: {
       AND: [
         {
-          agent: {
-            organizationId: session.organization?.id,
-          },
+          organizationId: session.organization?.id,
         },
+        {
+          ...(channelFilter
+            ? { channel: channelFilter }
+            : {
+                // channel: {
+                //   notIn: [ConversationChannel.dashboard],
+                // },
+              }),
+        },
+        // {
+        //   agent: {
+        //     organizationId: session.organization?.id,
+        //   },
+        // },
         ...(agentId
           ? [
               {
@@ -64,6 +85,24 @@ export const getLogs = async (req: AppNextApiRequest, res: NextApiResponse) => {
               },
             ]
           : []),
+        ...(priority
+          ? [
+              {
+                priority,
+              },
+            ]
+          : []),
+        ...(assigneeId
+          ? [
+              {
+                assignees: {
+                  some: {
+                    id: assigneeId,
+                  },
+                },
+              },
+            ]
+          : []),
         ...(unread
           ? [
               {
@@ -88,8 +127,15 @@ export const getLogs = async (req: AppNextApiRequest, res: NextApiResponse) => {
         }
       : {}),
     include: {
+      form: true,
       agent: true,
       lead: true,
+      mailInbox: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       _count: {
         select: {
           messages: {
@@ -108,6 +154,18 @@ export const getLogs = async (req: AppNextApiRequest, res: NextApiResponse) => {
     },
     orderBy: {
       updatedAt: 'desc',
+    },
+  });
+
+  capture?.({
+    event: AnalyticsEvents.INBOX_FILTER,
+    payload: {
+      userId: session.user?.id,
+      organizationId: session.organization?.id,
+      evalFilter,
+      agentId,
+      conversationStatus,
+      unread,
     },
   });
 

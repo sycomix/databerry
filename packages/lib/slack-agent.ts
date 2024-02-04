@@ -3,8 +3,7 @@ import { WebClient } from '@slack/web-api';
 import { Agent, Datastore } from '@chaindesk/prisma';
 
 import { AgentWithTools } from './agent';
-import chat from './chat';
-import summarize from './summarize';
+import generateSummary from './summarize';
 
 const slackAgent = async ({
   input,
@@ -76,7 +75,7 @@ const slackAgent = async ({
         messages?.map((message) => `Message: ${message.text}`).join('\n\n') ||
         'EMPTY';
 
-      return summarize({ text, prompt })?.then((res) => res.answer || '');
+      return generateSummary({ text })?.then((res) => res.summary || '');
     },
   });
 

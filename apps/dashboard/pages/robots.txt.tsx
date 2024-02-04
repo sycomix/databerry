@@ -1,7 +1,10 @@
 import type { GetServerSideProps } from 'next';
 
 export const getServerSideProps: GetServerSideProps = async ({ req, res }) => {
-  const host = 'https://www.chaindesk.ai';
+  let host = req.headers.host || 'https://www.chaindesk.ai';
+  if (!host?.startsWith('http')) {
+    host = `https://${host}`;
+  }
 
   if (req.method !== 'GET') {
     res.statusCode = 405;
@@ -25,6 +28,12 @@ Allow: /
 
 Sitemap: ${host}/sitemap.xml
 Sitemap: ${host}/help/sitemap.xml
+${
+  host?.includes('chaindesk.ai')
+    ? `Sitemap: ${host}/api/tools/youtube-summary/sitemap`
+    : ''
+}
+
 `);
   } else {
     res.write(`User-agent: *

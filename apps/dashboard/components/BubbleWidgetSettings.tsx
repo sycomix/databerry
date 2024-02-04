@@ -21,16 +21,16 @@ import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import html from 'react-syntax-highlighter/dist/esm/languages/hljs/htmlbars';
 import docco from 'react-syntax-highlighter/dist/esm/styles/hljs/vs2015';
 
-import Input from '@app/components/Input';
+import { theme, themeKeys } from '@app/utils/themes/chat-bubble';
 
 import { CreateAgentSchema } from '@chaindesk/lib/types/dtos';
 
 import CommonInterfaceInput from './AgentInputs/CommonInterfaceInput';
-import InitMessageInput from './AgentInputs/InitMessageInput';
-import SuggestionsInput from './AgentInputs/SuggestionsInput';
+import CustomCSSInput from './AgentInputs/CustomCSSInput';
 import AgentForm from './AgentForm';
-import ChatBubble, { theme } from './ChatBubble';
+import ChatBubble from './ChatBubble';
 import ConnectForm from './ConnectForm';
+import ReactFrameStyleFix from './ReactFrameStyleFix';
 
 if (typeof window !== 'undefined') {
   SyntaxHighlighter.registerLanguage('htmlbars', html);
@@ -41,23 +41,32 @@ type Props = {
 };
 
 export default function BubbleWidgetSettings(props: Props) {
-  const installScript = `<script
-    defer
-    id="${props.agentId}"
-    data-name="databerry-chat-bubble"
-    src="https://cdn.jsdelivr.net/npm/@databerry/chat-bubble@latest"
-  ></script>`;
-  //   const installScript = `<script type="text/javascript">
-  //   (function() {
-  //     d = document;
-  //     s = d.createElement('script');
-  //     s.id = '${getAgentQuery?.data?.id}';
-  //     s.setAttribute('data-name', 'databerry-chat-bubble');
-  //     s.src = 'https://cdn.jsdelivr.net/npm/@databerry/chat-bubble@latest';
-  //     s.async = 1;
-  //     d.getElementsByTagName('head')[0].appendChild(s);
-  //   })();
-  // </script>`;
+  const installScript = `<script type="module">
+  import Chatbox from 'https://cdn.jsdelivr.net/npm/@chaindesk/embeds@latest/dist/chatbox/index.js';
+
+  Chatbox.initBubble({
+    agentId: '${props.agentId}',
+    
+    // optional 
+    // If provided will create a contact for the user and link it to the conversation
+    contact: {
+      firstName: 'John',
+      lastName: 'Doe',
+      email: 'customer@email.com',
+      phoneNumber: '+33612345644',
+      userId: '42424242',
+    },
+    // optional
+    // Override initial messages
+    initialMessages: [
+      'Hello Georges how are you doing today?',
+      'How can I help you ?',
+    ],
+    // optional
+    // Provided context will be appended to the Agent system prompt
+    context: "The user you are talking to is John. Start by Greeting him by his name.",
+  });
+</script>`;
 
   return (
     <AgentForm
@@ -112,45 +121,64 @@ export default function BubbleWidgetSettings(props: Props) {
                           />
                         </FormControl>
 
-                        <Button
-                          type="submit"
-                          loading={mutation.isMutating}
-                          sx={{ ml: 'auto', mt: 2 }}
-                        >
-                          Update
-                        </Button>
+                        {formState.isDirty && formState.isValid && (
+                          <Button
+                            type="submit"
+                            loading={mutation.isMutating}
+                            sx={{
+                              zIndex: 2,
+                              ml: 'auto',
+                              mt: 2,
+                              position: 'fixed',
+                              bottom: 20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              borderRadius: '30px',
+                            }}
+                            size="lg"
+                            color="success"
+                          >
+                            Save
+                          </Button>
+                        )}
                       </Stack>
 
-                      {query?.data?.id && config && (
-                        <Frame
-                          style={{
-                            width: '100%',
-                            height: 600,
-                            border: '1px solid rgba(0, 0, 0, 0.2)',
-                            borderRadius: 20,
-                          }}
-                        >
-                          <FrameContextConsumer>
-                            {({ document }) => {
-                              const cache = createCache({
-                                key: 'iframe',
-                                container: document?.head,
-                                prepend: true,
-                                speedy: true,
-                              });
+                      <Stack
+                        style={{
+                          width: '100%',
+                        }}
+                        spacing={2}
+                      >
+                        {query?.data?.id && config && (
+                          <Frame
+                            style={{
+                              width: '100%',
+                              height: 600,
+                              border: '1px solid rgba(0, 0, 0, 0.2)',
+                              borderRadius: 20,
+                            }}
+                          >
+                            <FrameContextConsumer>
+                              {({ document }) => {
+                                const cache = createCache({
+                                  key: 'iframe',
+                                  container: document?.head,
+                                  prepend: true,
+                                  speedy: true,
+                                });
 
-                              return (
-                                <StyledEngineProvider injectFirst>
-                                  <CacheProvider value={cache}>
-                                    <ThemeProvider theme={theme}>
+                                return (
+                                  <StyledEngineProvider injectFirst>
+                                    <CacheProvider value={cache}>
                                       <CssVarsProvider
                                         theme={theme}
                                         defaultMode="light"
-                                        modeStorageKey="databerry-chat-bubble"
-                                        // colorSchemeStorageKey="databerry-chat-bubble-scheme"
-                                        // attribute="databerry-chat-bubble-scheme"
+                                        {...themeKeys}
                                       >
                                         <CssBaseline />
+
+                                        <ReactFrameStyleFix />
+
                                         <Box
                                           sx={{
                                             width: '100vw',
@@ -164,16 +192,25 @@ export default function BubbleWidgetSettings(props: Props) {
                                             agentId={query?.data?.id!}
                                             initConfig={config}
                                           />
+                                          {config?.customCSS && (
+                                            <style
+                                              dangerouslySetInnerHTML={{
+                                                __html: config?.customCSS || '',
+                                              }}
+                                            ></style>
+                                          )}
                                         </Box>
                                       </CssVarsProvider>
-                                    </ThemeProvider>
-                                  </CacheProvider>
-                                </StyledEngineProvider>
-                              );
-                            }}
-                          </FrameContextConsumer>
-                        </Frame>
-                      )}
+                                    </CacheProvider>
+                                  </StyledEngineProvider>
+                                );
+                              }}
+                            </FrameContextConsumer>
+                          </Frame>
+                        )}
+
+                        <Stack>{<CustomCSSInput />}</Stack>
+                      </Stack>
                     </Stack>
 
                     <Stack id="embed" gap={2} mb={2}>

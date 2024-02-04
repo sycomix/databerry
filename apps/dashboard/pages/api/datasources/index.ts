@@ -6,6 +6,7 @@ import { NextApiResponse } from 'next';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
 
+import { AnalyticsEvents, capture } from '@chaindesk/lib/analytics-server';
 import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
 import { s3 } from '@chaindesk/lib/aws';
 import {
@@ -22,6 +23,7 @@ import { AcceptedDatasourceMimeTypes } from '@chaindesk/lib/types/dtos';
 import { AppNextApiRequest } from '@chaindesk/lib/types/index';
 import { DatasourceSchema } from '@chaindesk/lib/types/models';
 import validate from '@chaindesk/lib/validate';
+import YoutubeApi from '@chaindesk/lib/youtube-api';
 import { DatasourceStatus, DatasourceType, Usage } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
@@ -282,6 +284,18 @@ export const upsertDatasource = async (
       priority: 1,
     },
   ]);
+
+  if (!data?.id) {
+    capture?.({
+      event: AnalyticsEvents.DATASOURCE_CREATED,
+      payload: {
+        userId: session?.user?.id,
+        organizationId: session?.organization?.id,
+        datasourceType: datasource.type,
+        datasourceConfig: JSON.stringify(datasource.config || '{}'),
+      },
+    });
+  }
 
   return datasource;
 };

@@ -1,24 +1,20 @@
 import cuid from 'cuid';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { NextApiResponse } from 'next';
 
-import { NewConversation, render } from '@chaindesk/emails';
-import { queryCountConfig } from '@chaindesk/lib/account-config';
-import AgentManager from '@chaindesk/lib/agent';
 import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
-import {
-  formatOrganizationSession,
-  sessionOrganizationInclude,
-} from '@chaindesk/lib/auth';
-import ConversationManager from '@chaindesk/lib/conversation';
+import { sessionOrganizationInclude } from '@chaindesk/lib/auth';
 import {
   createLazyAuthHandler,
   respond,
 } from '@chaindesk/lib/createa-api-handler';
-import guardAgentQueryUsage from '@chaindesk/lib/guard-agent-query-usage';
-import mailer from '@chaindesk/lib/mailer';
+import getRequestCountry from '@chaindesk/lib/get-request-country';
+import handleChatMessage, {
+  ChatAgentArgs,
+  ChatConversationArgs,
+} from '@chaindesk/lib/handle-chat-message';
 import cors from '@chaindesk/lib/middlewares/cors';
 import pipe from '@chaindesk/lib/middlewares/pipe';
-import runMiddleware from '@chaindesk/lib/run-middleware';
+import rateLimit from '@chaindesk/lib/middlewares/rate-limit';
 import streamData from '@chaindesk/lib/stream-data';
 import { AppNextApiRequest, SSE_EVENT } from '@chaindesk/lib/types';
 import { ChatRequest } from '@chaindesk/lib/types/dtos';
@@ -26,8 +22,7 @@ import {
   AgentVisibility,
   ConversationChannel,
   MembershipRole,
-  MessageFrom,
-  Usage,
+  Prisma,
 } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
@@ -40,10 +35,19 @@ export const chatAgentRequest = async (
   const session = req.session;
   const id = req.query.id as string;
   const data = req.body as ChatRequest;
+  const visitorId = data.visitorId || cuid();
+  const hasContact =
+    data?.contact?.email || data?.contact?.phoneNumber || data?.contact?.userId;
+
+  if (data.isDraft && !session?.organization?.id) {
+    throw new ApiError(ApiErrorType.UNAUTHORIZED);
+  }
 
   const conversationId = data.conversationId || cuid();
-  const isNewConversation = !data.conversationId;
-  if (session?.authType == 'apiKey') {
+  if (
+    session?.authType == 'apiKey' &&
+    data.channel !== ConversationChannel.form
+  ) {
     data.channel = ConversationChannel.api;
   }
 
@@ -52,35 +56,51 @@ export const chatAgentRequest = async (
       id,
     },
     include: {
+      ...ChatAgentArgs.include,
       organization: {
+        ...ChatAgentArgs.include?.organization,
+
         include: {
-          ...sessionOrganizationInclude,
-          memberships: {
-            where: {
-              role: MembershipRole.OWNER,
-            },
-            include: {
-              user: {
-                select: {
-                  email: true,
+          ...ChatAgentArgs.include?.organization.include,
+          ...(hasContact
+            ? {
+                contacts: {
+                  take: 1,
+                  where: {
+                    OR: [
+                      ...(data?.contact?.email
+                        ? [{ email: data.contact.email }]
+                        : []),
+                      ...(data?.contact?.phoneNumber
+                        ? [{ phoneNumber: data.contact.phoneNumber }]
+                        : []),
+                      ...(data?.contact?.userId
+                        ? [{ externalId: data.contact.userId }]
+                        : []),
+                    ],
+                  },
                 },
-              },
-            },
-          },
+              }
+            : {}),
           conversations: {
+            ...ChatConversationArgs,
+            take: 1,
             where: {
-              AND: {
-                id: conversationId,
-                agentId: id,
-              },
-            },
-            include: {
-              messages: {
-                take: -24,
-                orderBy: {
-                  createdAt: 'asc',
-                },
-              },
+              ...(data.isDraft
+                ? {
+                    id: conversationId,
+                    organizationId: session?.organization?.id,
+                  }
+                : {
+                    AND: {
+                      id: conversationId,
+                      participantsAgents: {
+                        some: {
+                          id,
+                        },
+                      },
+                    },
+                  }),
             },
           },
         },
@@ -88,6 +108,7 @@ export const chatAgentRequest = async (
       tools: {
         include: {
           datastore: true,
+          form: true,
         },
       },
     },
@@ -111,21 +132,6 @@ export const chatAgentRequest = async (
     }
   }
 
-  const orgSession =
-    session?.organization || formatOrganizationSession(agent?.organization!);
-  const usage = orgSession?.usage as Usage;
-
-  guardAgentQueryUsage({
-    usage,
-    plan: orgSession?.currentPlan,
-  });
-
-  if (data.modelName) {
-    // override modelName
-    agent.modelName = data.modelName;
-  }
-
-  const manager = new AgentManager({ agent, topK: 5 });
   const ctrl = new AbortController();
 
   if (data.streaming) {
@@ -140,112 +146,59 @@ export const chatAgentRequest = async (
     });
   }
 
-  const conversationManager = new ConversationManager({
-    organizationId: agent?.organizationId!,
-    channel: data.channel,
-    agentId: agent?.id,
-    userId: session?.user?.id,
-    visitorId: data.visitorId!,
-    conversationId,
-  });
-
-  conversationManager.push({
-    from: MessageFrom.human,
-    text: data.query,
-  });
-
-  const handleStream = (data: string) =>
+  const handleStream = (data: string, event: SSE_EVENT) =>
     streamData({
-      event: SSE_EVENT.answer,
+      event: event || SSE_EVENT.answer,
       data,
       res,
     });
 
-  const [chatRes] = await Promise.all([
-    manager.query({
-      ...data,
-      input: data.query,
-      stream: data.streaming ? handleStream : undefined,
-      history: agent?.organization?.conversations?.[0]?.messages,
-      abortController: ctrl,
-      filters: data.filters,
-    }),
-    prisma.usage.update({
-      where: {
-        id: agent?.organization?.usage?.id,
-      },
-      data: {
-        nbAgentQueries:
-          (agent?.organization?.usage?.nbAgentQueries || 0) +
-          (queryCountConfig?.[agent?.modelName] || 1),
-      },
-    }),
-  ]);
+  let existingContact = agent?.organization?.contacts?.[0];
 
-  const answerMsgId = cuid();
-
-  conversationManager.push({
-    id: answerMsgId,
-    from: MessageFrom.agent,
-    text: chatRes.answer,
-    sources: chatRes.sources,
-  });
-
-  await conversationManager.save();
-
-  // Send new conversation notfication from website visitor
-  const ownerEmail = agent?.organization?.memberships?.[0]?.user?.email;
-  if (
-    ownerEmail &&
-    isNewConversation &&
-    data.channel === ConversationChannel.website &&
-    !session?.user?.id
-  ) {
+  if (hasContact && !existingContact) {
     try {
-      await mailer.sendMail({
-        from: {
-          name: 'Chaindesk',
-          address: process.env.EMAIL_FROM!,
+      existingContact = await prisma.contact.create({
+        data: {
+          email: data?.contact?.email,
+          phoneNumber: data?.contact?.phoneNumber,
+          externalId: data?.contact?.userId,
+          firstName: data?.contact?.firstName,
+          lastName: data?.contact?.lastName,
+          organization: {
+            connect: {
+              id: agent?.organization?.id!,
+            },
+          },
         },
-        to: ownerEmail,
-        subject: `💬 New conversation started with Agent ${agent?.name}`,
-        html: render(
-          <NewConversation
-            agentName={agent.name}
-            messages={[
-              {
-                id: '1',
-                text: data.query,
-                from: MessageFrom.human,
-              },
-              {
-                id: '2',
-                text: chatRes.answer,
-                from: MessageFrom.agent,
-              },
-            ]}
-            ctaLink={`${
-              process.env.NEXT_PUBLIC_DASHBOARD_URL
-            }/logs?tab=all&conversationId=${encodeURIComponent(
-              conversationId
-            )}&targetOrgId=${encodeURIComponent(agent.organizationId!)}`}
-          />
-        ),
       });
-    } catch (err) {
-      req.logger.error(err);
+    } catch (error) {
+      console.log('error', error);
     }
   }
+
+  const chatRes = await handleChatMessage({
+    ...data,
+    logger: req.logger,
+    agent: agent as ChatAgentArgs,
+    conversation: agent?.organization?.conversations?.[0],
+    handleStream,
+    abortController: ctrl,
+    country: getRequestCountry(req),
+    userId: session?.user?.id,
+    visitorId,
+    contactId: existingContact?.id || data?.contactId,
+    context: data.context,
+  });
 
   if (data.streaming) {
     streamData({
       event: SSE_EVENT.endpoint_response,
       data: JSON.stringify({
-        messageId: answerMsgId,
-        answer: chatRes.answer,
-        sources: chatRes.sources,
-        conversationId: conversationManager.conversationId,
-        visitorId: conversationManager.visitorId,
+        messageId: chatRes.answerMsgId,
+        answer: chatRes?.agentResponse?.answer,
+        sources: chatRes?.agentResponse?.sources,
+        conversationId: chatRes.conversationId,
+        visitorId: visitorId,
       }),
       res,
     });
@@ -256,14 +209,23 @@ export const chatAgentRequest = async (
     });
   } else {
     return {
-      ...chatRes,
-      messageId: answerMsgId,
-      conversationId: conversationManager.conversationId,
-      visitorId: conversationManager.visitorId,
+      ...chatRes.agentResponse,
+      messageId: chatRes.answerMsgId,
+      conversationId: chatRes.conversationId,
+      visitorId: visitorId,
     };
   }
 };
 
-handler.post(respond(chatAgentRequest));
+handler.post(
+  pipe(
+    // rateLimit({
+    //   duration: 60,
+    //   limit: 30,
+    //   // 30req/min
+    // }),
+    respond(chatAgentRequest)
+  )
+);
 
 export default pipe(cors({ methods: ['POST', 'HEAD'] }), handler);

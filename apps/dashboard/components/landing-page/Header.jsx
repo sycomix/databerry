@@ -3,8 +3,9 @@ import { CheckIcon, StarIcon } from '@heroicons/react/20/solid';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import Button from '@mui/joy/Button';
 import clsx from 'clsx';
+import Image from 'next/image';
 import Link from 'next/link';
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 // import { Button } from '@app/components/landing-page/Button'
 import { Container } from '@app/components/landing-page/Container';
@@ -85,12 +86,7 @@ function MobileNavigation() {
             className="absolute inset-x-0 flex flex-col p-4 mt-4 text-lg tracking-tight origin-top bg-white shadow-xl top-full rounded-2xl text-slate-900 ring-1 ring-slate-900/5"
           >
             <MobileNavLink href="/pricing">Pricing</MobileNavLink>
-            <MobileNavLink
-              href="https://github.com/gmpetrov/chaindesk"
-              target={'_blank'}
-            >
-              GitHub
-            </MobileNavLink>
+
             <MobileNavLink
               href="https://databerry.getrewardful.com/"
               target={'_blank'}
@@ -102,6 +98,12 @@ function MobileNavigation() {
             </MobileNavLink>
             <MobileNavLink href="https://docs.chaindesk.ai/" target={'_blank'}>
               API Docs
+            </MobileNavLink>
+            <MobileNavLink
+              href="https://github.com/gmpetrov/chaindesk"
+              target={'_blank'}
+            >
+              GitHub
             </MobileNavLink>
 
             {/* <MobileNavLink href="#testimonials">Testimonials</MobileNavLink> */}
@@ -116,6 +118,20 @@ function MobileNavigation() {
 }
 
 export function Header() {
+  const [hostname, setHostname] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setHostname(window.location.hostname);
+    }
+  }, []);
+
+  let logoUrl = '';
+
+  if (hostname?.includes('chatbotgpt.ai')) {
+    logoUrl = '/logo-chatbotgpt-dark.png';
+  }
+
   return (
     <>
       {/* #112F8A */}
@@ -143,7 +159,18 @@ export function Header() {
           <nav className="relative z-50 flex justify-between">
             <div className="flex items-center md:gap-x-12">
               <Link href="/" aria-label="Home">
-                <Logo className="w-auto h-10" />
+                {!logoUrl && <Logo className="w-auto h-10" />}
+                {logoUrl && (
+                  <Image
+                    className="w-32"
+                    width="80"
+                    height="100"
+                    // className={clsx(props.className)}
+                    // src="/logo-chatbotgpt-dark.png"
+                    src={logoUrl}
+                    alt=""
+                  />
+                )}
               </Link>
               <div className="hidden md:flex md:gap-x-6">
                 {/* <Link href={RouteNames.CHAT_SITE}>
@@ -159,8 +186,6 @@ export function Header() {
                 </Button>
               </Link> */}
 
-                <Menu />
-
                 {/* <Button
                   href="/products/crisp-plugin"
                   size="sm"
@@ -173,19 +198,24 @@ export function Header() {
                 </Button> */}
 
                 {/* <NavLink href="/help">Help Center</NavLink> */}
+                <NavLink
+                  href="https://databerry.getrewardful.com/"
+                  target={'_blank'}
+                >
+                  Affiliates
+                </NavLink>
+                <NavLink href="/#integrations">Integrations</NavLink>
                 <NavLink href="/pricing">Pricing</NavLink>
+
+                <Menu />
+
                 {/* <NavLink href="https://github.com/gmpetrov/chaindesk" target={'_blank'}>
                 GitHub
               </NavLink> */}
                 {/* <NavLink href="https://docs.chaindesk.ai/" target={'_blank'}>
                 Docs
               </NavLink> */}
-                {/* <NavLink
-                  href="https://databerry.getrewardful.com/"
-                  target={'_blank'}
-                >
-                  Affiliates
-                </NavLink> */}
+
                 {/* <NavLink href="#testimonials">Testimonials</NavLink> */}
               </div>
             </div>

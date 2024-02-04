@@ -23,12 +23,12 @@ import useSWR from 'swr';
 import z from 'zod';
 
 import useStateReducer from '@app/hooks/useStateReducer';
-import { getConversationMetadata } from '@app/pages/api/integrations/crisp/widget';
 
+import { getConversationMetadata } from '@chaindesk/integrations/crisp/api/widget';
 import { fetcher } from '@chaindesk/lib/swr-fetcher';
 import { AIStatus } from '@chaindesk/lib/types/crisp';
 import { CrispUpdateMetadataSchema } from '@chaindesk/lib/types/dtos';
-import { Prisma } from '@chaindesk/prisma';
+import { Prisma, ServiceProviderType } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
 export default function CrispConfig(props: { isPremium?: boolean }) {
@@ -166,18 +166,23 @@ export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
   }
   // const websites = await getConnectedWebsites();
   // if (token === websites[websiteId]?.token) {
-  const integration = await prisma.externalIntegration.findUnique({
+  const integration = await prisma.serviceProvider.findUnique({
     where: {
-      integrationId: websiteId,
+      unique_external_id: {
+        type: ServiceProviderType.crisp,
+        externalId: websiteId,
+      },
     },
     include: {
-      agent: {
+      agents: {
         include: {
           organization: {
             include: {
               subscriptions: {
                 where: {
-                  status: 'active',
+                  status: {
+                    in: ['active', 'trialing'],
+                  },
                 },
               },
               apiKeys: true,
@@ -191,7 +196,8 @@ export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
   return {
     props: {
       isPremium:
-        (integration?.agent?.organization?.subscriptions?.length || 0) > 0,
+        (integration?.agents?.[0]?.organization?.subscriptions?.length || 0) >
+        0,
     },
   };
   // }

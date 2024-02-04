@@ -7,6 +7,7 @@ import { useRouter } from 'next/router';
 import Script from 'next/script';
 import { useEffect, useState } from 'react';
 
+import Body from '@app/components/cs-landing-page/Body';
 import ChatBotBenefits from '@app/components/landing-page/ChatBotBenefits';
 import CompanyLogos from '@app/components/landing-page/CompanyLogos';
 import FAQ from '@app/components/landing-page/FAQ';
@@ -60,9 +61,10 @@ export default function Home() {
         title="Chaindesk - ChatGPT AI Chat Bot for your business"
         description="Chaindesk brings a no-code platform to create custom AI chatbots trained on your data. Our solution makes customer support easy and simplifies team workflow."
         uri="/"
+        ogImage="https://www.chaindesk.ai/og-image.jpg"
       />
 
-      {/* <div className="w-full p-2 text-center bg-indigo-500">
+      {/* <div className="p-2 w-full text-center bg-indigo-500">
         <h2>
           🔔 Rebranding Alert - Databerry.ai is now ⛓️{' '}
           <strong>Chaindesk</strong>
@@ -70,18 +72,29 @@ export default function Home() {
       </div> */}
       <Header />
 
-      <script
+      {/* <script
         defer
         src="https://cdn.jsdelivr.net/npm/@databerry/chat-bubble@latest"
-        id="clgtujkqh022j0u0zw3ut8vk3"
+        id="clq6g5cuv000wpv8iddswwvnd"
         data-name="databerry-chat-bubble"
-      ></script>
+      ></script> */}
+
+      <script
+        type="module"
+        dangerouslySetInnerHTML={{
+          __html: `import Chatbox from 'https://cdn.jsdelivr.net/npm/@chaindesk/embeds@latest/dist/chatbox/index.js';
+
+  Chatbox.initBubble({
+    agentId: 'clq6g5cuv000wpv8iddswwvnd',
+  });`,
+        }}
+      />
 
       {/* <Script id="chaindesk" strategy="afterInteractive">
         {`(function() {
       d = document;
       s = d.createElement('script');
-      s.id = 'clgtujkqh022j0u0zw3ut8vk3';
+      s.id = 'clq6g5cuv000wpv8iddswwvnd';
       s.setAttribute('data-name', 'databerry-chat-bubble');
       s.src = 'https://cdn.jsdelivr.net/npm/@databerry/chat-bubble@latest';
       s.async = 1;
@@ -90,34 +103,17 @@ export default function Home() {
       </Script> */}
 
       <main className={clsx('bg-black min-heigh-full', mounted ? mode : '')}>
-        {/* <Hero /> */}
-        <HeroChatGPTPlugin />
+        {/* <HeroChatGPTPlugin />
         <PartnerLogos />
-        {/* <CompanyLogos /> */}
-        {/* <Image
-          src="/features.png"
-          alt="features"
-          width="800"
-          height="200"
-          className="mx-auto"
-        /> */}
-        {/* <PrimaryFeatures /> */}
-        {/* 
-        <SecondaryFeatures />
-        <CallToAction />
-        <Testimonials />
-        <Pricing />
-      <Faqs /> */}
+        
         <FeaturesForChatWithData />
         <FeaturesForCustomerSupport />
         <FeaturesForDevs />
         <Languages />
-        {/* <FeaturesForChatGPTPlugin /> */}
-        {/* <FeaturesForSlack /> */}
-        {/* <FeaturesForInfluencers /> */}
-        {/* <ChatBotBenefits /> */}
         <FAQ />
-        <Cta />
+        <Cta /> */}
+
+        <Body hero2 />
       </main>
       <Footer />
     </>
