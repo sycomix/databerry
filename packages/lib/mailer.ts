@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 
-const mailer = nodemailer.createTransport(process.env.EMAIL_SERVER);
+const transporter = nodemailer.createTransport(process.env.EMAIL_SERVER);
+const mailer = nodemailer.createTransport(transporter);
 
 export default mailer;
