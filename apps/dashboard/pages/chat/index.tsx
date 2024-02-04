@@ -71,6 +71,7 @@ export default function ChatPage() {
     conversationId: currentConversationId,
     conversationStatus,
     handleAbort,
+    refreshConversation,
   } = useChat({
     endpoint: `/api/chains/run`,
     queryBody: {
@@ -154,6 +155,7 @@ export default function ChatPage() {
         variant="outlined"
         multiple
         options={ressources}
+        isOptionEqualToValue={(option, value) => option.id === value.id}
         value={state.selectedKnowledgeOptions}
         groupBy={(option) => option?.type}
         sx={{
@@ -195,7 +197,7 @@ export default function ChatPage() {
 
   const handleSelectConversation = (conversationId: string) => {
     setConversationId(conversationId);
-    router.query.conversationId = conversationId || '';
+    router.query.conversationId = conversationId;
     router.replace(router, undefined, {
       shallow: true,
     });
@@ -356,6 +358,8 @@ export default function ChatPage() {
                 />
               }
               userImgUrl={session?.user?.image!}
+              refreshConversation={refreshConversation}
+              autoFocus
             />
 
             {datasourceViewId && (
@@ -363,7 +367,7 @@ export default function ChatPage() {
                 <DatasourceViewer
                   datasourceId={datasourceViewId}
                   pageNumber={state.viewerPageNumber}
-                  // search={state.viewerSearch}
+                  search={state.viewerSearch}
                 />
               </div>
             )}
@@ -389,10 +393,10 @@ ChatPage.getLayout = function getLayout(page: ReactElement) {
   );
 };
 
-export const getServerSideProps = withAuth(
-  async (ctx: GetServerSidePropsContext) => {
-    return {
-      props: {},
-    };
-  }
-);
+// export const getServerSideProps = withAuth(
+//   async (ctx: GetServerSidePropsContext) => {
+//     return {
+//       props: {},
+//     };
+//   }
+// );

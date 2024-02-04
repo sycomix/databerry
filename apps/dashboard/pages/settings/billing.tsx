@@ -21,7 +21,9 @@ import { ReactElement } from 'react';
 import * as React from 'react';
 
 import Admin from '@app/components/Admin';
+import { AnalyticsContext } from '@app/components/Analytics';
 import SettingsLayout from '@app/components/SettingsLayout';
+import StripePricingTable from '@app/components/StripePricingTable';
 import UserFree from '@app/components/UserFree';
 import UserPremium from '@app/components/UserPremium';
 
@@ -45,61 +47,6 @@ export default function BillingSettingsPage() {
     }
   };
 
-  React.useEffect(() => {
-    function getClientReferenceId() {
-      return (
-        ((window as any)?.Rewardful && (window as any)?.Rewardful?.referral) ||
-        'checkout_' + new Date().getTime()
-      );
-    }
-
-    (async () => {
-      const checkoutSessionId = router.query?.checkout_session_id;
-
-      if (!checkoutSessionId) {
-        return;
-      }
-
-      try {
-        const checkoutDataRes = await axios.post(
-          '/api/stripe/get-checkout-session',
-          {
-            checkoutSessionId,
-          }
-        );
-
-        const checkoutData = checkoutDataRes.data;
-
-        if (checkoutData) {
-          console.debug(checkoutData);
-          window?.gtag?.('event', 'purchase', {
-            transaction_id: checkoutData.id,
-            value: checkoutData.amount_total,
-            currency: checkoutData.currency / 100,
-          });
-        }
-      } catch (err) {
-        console.log(err);
-      }
-
-      let utmParams = {};
-      try {
-        utmParams = JSON.parse(Cookies.get('utmParams') || '{}');
-      } catch {}
-
-      await axios
-        .post('/api/stripe/referral', {
-          checkoutSessionId,
-          referralId: getClientReferenceId(),
-          utmParams,
-        })
-        .catch(console.log);
-
-      delete router.query.checkout_session_id;
-      router.replace(router, undefined, { shallow: true });
-    })();
-  }, []);
-
   const currentPlan = accountConfig[session?.organization?.currentPlan!];
 
   if (!session?.organization) {
@@ -108,23 +55,10 @@ export default function BillingSettingsPage() {
 
   return (
     <Stack>
-      <Head>
-        <script
-          id="stripe-pricing-table"
-          async
-          src="https://js.stripe.com/v3/pricing-table.js"
-        ></script>
-      </Head>
-
       <Box mb={4}>
         <UserFree>
           <Card variant="outlined" sx={{ bgcolor: 'black' }}>
-            <stripe-pricing-table
-              pricing-table-id={process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID}
-              publishable-key={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
-              client-reference-id={session?.organization?.id}
-              customer-email={session?.user?.email}
-            ></stripe-pricing-table>
+            <StripePricingTable />
           </Card>
         </UserFree>
       </Box>
@@ -238,10 +172,10 @@ BillingSettingsPage.getLayout = function getLayout(page: ReactElement) {
   return <SettingsLayout>{page}</SettingsLayout>;
 };
 
-export const getServerSideProps = withAuth(
-  async (ctx: GetServerSidePropsContext) => {
-    return {
-      props: {},
-    };
-  }
-);
+// export const getServerSideProps = withAuth(
+//   async (ctx: GetServerSidePropsContext) => {
+//     return {
+//       props: {},
+//     };
+//   }
+// );

@@ -35,10 +35,26 @@ export const getConversations = async (
     where: {
       AND: [
         {
-          userId: session?.user?.id,
           organizationId: session.organization.id,
+          // userId: session?.user?.id,
+          participantsUsers: {
+            some: {
+              id: session?.user?.id,
+            },
+          },
         },
-        ...(agentId && agentId !== 'null' ? [{ agentId }] : []),
+        // ...(agentId && agentId !== 'null' ? [{ agentId }] : []),
+        ...(agentId && agentId !== 'null'
+          ? [
+              {
+                participantsAgents: {
+                  some: {
+                    id: agentId,
+                  },
+                },
+              },
+            ]
+          : []),
         ...(agentId === 'null'
           ? [
               {

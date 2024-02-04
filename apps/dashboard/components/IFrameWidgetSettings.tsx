@@ -18,14 +18,17 @@ import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import html from 'react-syntax-highlighter/dist/esm/languages/hljs/htmlbars';
 import docco from 'react-syntax-highlighter/dist/esm/styles/hljs/vs2015';
 
+import { theme, themeKeys } from '@app/utils/themes/iframe-widget';
+
 import { appUrl } from '@chaindesk/lib/config';
 import { CreateAgentSchema } from '@chaindesk/lib/types/dtos';
 
 import CommonInterfaceInput from './AgentInputs/CommonInterfaceInput';
+import CustomCSSInput from './AgentInputs/CustomCSSInput';
 import AgentForm from './AgentForm';
 import ChatBoxFrame from './ChatBoxFrame';
-import { theme } from './ChatBubble';
 import ConnectForm from './ConnectForm';
+import ReactFrameStyleFix from './ReactFrameStyleFix';
 
 if (typeof window !== 'undefined') {
   SyntaxHighlighter.registerLanguage('htmlbars', html);
@@ -36,13 +39,23 @@ type Props = {
 };
 
 export default function BubbleWidgetSettings(props: Props) {
-  const installScript = `<iframe
+  const installScript = `<script type="module">
+  import Chatbox from 'https://cdn.jsdelivr.net/npm/@chaindesk/embeds@latest/dist/chatbox/index.js';
+
+  Chatbox.initStandard({
+    agentId: '${props.agentId}',
+  });
+</script>
+
+<chaindesk-chatbox-standard style="width: 100%; height: 650px" />
+`;
+  const installScriptIframe = `<iframe
   src="${appUrl}/agents/${props.agentId}/iframe"
   width="100%"
   height="100%"
   frameborder="0"
+  allow="clipboard-write"
 ></iframe>
-
 `;
 
   return (
@@ -84,45 +97,65 @@ export default function BubbleWidgetSettings(props: Props) {
                             {...register('interfaceConfig.isBgTransparent')}
                           />
                         </FormControl>
+                      </Stack>
 
+                      {formState.isDirty && formState.isValid && (
                         <Button
                           type="submit"
                           loading={mutation.isMutating}
-                          disabled={!formState.isDirty || !formState.isValid}
-                          sx={{ ml: 'auto', mt: 2 }}
-                        >
-                          Update
-                        </Button>
-                      </Stack>
-
-                      {query?.data?.id && (
-                        <Frame
-                          style={{
-                            width: '100%',
-                            height: 600,
-                            border: '1px solid rgba(0, 0, 0, 0.2)',
-                            borderRadius: 20,
+                          sx={{
+                            zIndex: 2,
+                            ml: 'auto',
+                            mt: 2,
+                            position: 'fixed',
+                            bottom: 20,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            borderRadius: '30px',
                           }}
+                          size="lg"
+                          color="success"
                         >
-                          <FrameContextConsumer>
-                            {({ document }) => {
-                              const cache = createCache({
-                                key: 'iframe',
-                                container: document?.head,
-                                prepend: true,
-                                speedy: true,
-                              });
+                          Save
+                        </Button>
+                      )}
 
-                              return (
-                                <StyledEngineProvider injectFirst>
-                                  <CacheProvider value={cache}>
-                                    <ThemeProvider theme={theme}>
+                      <Stack
+                        style={{
+                          width: '100%',
+                        }}
+                        spacing={2}
+                      >
+                        {query?.data?.id && (
+                          <Frame
+                            style={{
+                              width: '100%',
+                              height: 600,
+                              border: '1px solid rgba(0, 0, 0, 0.2)',
+                              borderRadius: 20,
+                            }}
+                          >
+                            <FrameContextConsumer>
+                              {({ document }) => {
+                                const cache = createCache({
+                                  key: 'iframe',
+                                  container: document?.head,
+                                  prepend: true,
+                                  speedy: true,
+                                });
+
+                                return (
+                                  <StyledEngineProvider injectFirst>
+                                    <CacheProvider value={cache}>
                                       <CssVarsProvider
                                         theme={theme}
                                         defaultMode="light"
-                                        modeStorageKey="chaindesk-chat-iframe"
+                                        {...themeKeys}
                                       >
                                         <CssBaseline enableColorScheme />
+
+                                        <ReactFrameStyleFix />
+
                                         <Box
                                           style={{
                                             width: '100vw',
@@ -137,15 +170,25 @@ export default function BubbleWidgetSettings(props: Props) {
                                         >
                                           <ChatBoxFrame initConfig={config!} />
                                         </Box>
+
+                                        {config?.customCSS && (
+                                          <style
+                                            dangerouslySetInnerHTML={{
+                                              __html: config?.customCSS || '',
+                                            }}
+                                          ></style>
+                                        )}
                                       </CssVarsProvider>
-                                    </ThemeProvider>
-                                  </CacheProvider>
-                                </StyledEngineProvider>
-                              );
-                            }}
-                          </FrameContextConsumer>
-                        </Frame>
-                      )}
+                                    </CacheProvider>
+                                  </StyledEngineProvider>
+                                );
+                              }}
+                            </FrameContextConsumer>
+                          </Frame>
+                        )}
+
+                        <CustomCSSInput />
+                      </Stack>
                     </Stack>
                   </Stack>
                   <Stack

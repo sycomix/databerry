@@ -1,6 +1,7 @@
 import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightIcon from '@mui/icons-material/ChevronRightRounded';
+import { Alert, Checkbox } from '@mui/joy';
 import Autocomplete from '@mui/joy/Autocomplete';
 import AutocompleteOption from '@mui/joy/AutocompleteOption';
 import Button from '@mui/joy/Button';
@@ -21,9 +22,9 @@ import { z } from 'zod';
 
 import useStateReducer from '@app/hooks/useStateReducer';
 import type { getServiceProviders } from '@app/pages/api/accounts/service-providers';
-import getDrives from '@app/pages/api/integrations/google-drive/get-drives';
-import { listFolder } from '@app/pages/api/integrations/google-drive/list-folder';
 
+import getDrives from '@chaindesk/integrations/google-drive/api/drives';
+import { listFolder } from '@chaindesk/integrations/google-drive/api/folders';
 import { fetcher } from '@chaindesk/lib/swr-fetcher';
 import {
   DatasourceGoogleDrive,
@@ -37,7 +38,7 @@ import type { DatasourceFormProps } from './types';
 type Props = DatasourceFormProps<DatasourceGoogleDrive> & {};
 
 function Nested() {
-  const { control, register, setValue, formState, trigger } =
+  const { control, register, setValue, formState, trigger, watch } =
     useFormContext<DatasourceGoogleDrive>();
 
   const [state, setState] = useStateReducer({
@@ -60,14 +61,14 @@ function Nested() {
 
   const getDrivesQuery = useSWR<Prisma.PromiseReturnType<typeof getDrives>>(
     state.currentProviderId
-      ? `/api/integrations/google-drive/get-drives?providerId=${state.currentProviderId}`
+      ? `/api/integrations/google-drive/drives?providerId=${state.currentProviderId}`
       : null,
     fetcher
   );
 
   const listFolderQuery = useSWR<Prisma.PromiseReturnType<typeof listFolder>>(
     state.currentProviderId
-      ? `/api/integrations/google-drive/list-folder?providerId=${state.currentProviderId}&folderId=${state.currentFolderId}`
+      ? `/api/integrations/google-drive/folders?providerId=${state.currentProviderId}&folderId=${state.currentFolderId}`
       : null,
     fetcher
   );
@@ -76,13 +77,18 @@ function Nested() {
     e.preventDefault();
     e.stopPropagation();
 
-    const res = await axios.get('/api/integrations/google-drive/get-auth-url');
+    const res = await axios.get('/api/integrations/google-drive/add');
 
-    const url = res.data?.authUrl;
+    const url = res.data?.url;
 
     window.open(url, '_blank', 'width=800,height=800');
   };
 
+  const id = watch('id');
+  const hasOptIn = watch('hasOptIn');
+
+  console.log('ID--------->', id);
+  console.log('hasOptIn--------->', hasOptIn);
   return (
     <>
       <Stack gap={2}>
@@ -253,6 +259,16 @@ function Nested() {
               </FormHelperText>
             )}
           </FormControl>
+
+          {!id && (
+            <Alert>
+              <Checkbox
+                sx={{ mt: 2 }}
+                {...register('hasOptIn')}
+                label="I acknowledge and consent to the transfer of subsets of my data to large language model providers as part of the service's functionality and improvement."
+              />
+            </Alert>
+          )}
         </Stack>
       </Stack>
     </>
@@ -264,11 +280,19 @@ export default function GoogleDriveForm(props: Props) {
 
   return (
     <Base
-      schema={DatasourceSchema}
+      schema={DatasourceSchema.refine(
+        (val) => {
+          return (val as any).hasOptIn === true;
+        },
+        {
+          message: 'Please aknowledge the opt-in.',
+        }
+      )}
       {...rest}
       defaultValues={{
         ...props.defaultValues!,
         type: DatasourceType.google_drive_file,
+        hasOptIn: !!props?.defaultValues?.id,
       }}
     >
       {!defaultValues?.id && <Nested />}

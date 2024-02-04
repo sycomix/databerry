@@ -22,7 +22,7 @@ import { Message } from '@chaindesk/prisma';
 
 interface VercelInviteUserEmailProps {
   agentName?: string;
-  messages?: Message[];
+  messages?: Partial<Message>[];
   ctaLink?: string;
   visitorEmail?: string;
 }
@@ -41,8 +41,11 @@ export const NewLead = ({
       updatedAt: new Date(),
       conversationId: '42',
       sources: [],
+      usage: {},
       eval: 'good',
       read: false,
+      inputId: null,
+      metadata: {},
     },
     {
       id: '2',
@@ -52,8 +55,11 @@ export const NewLead = ({
       updatedAt: new Date(),
       conversationId: '42',
       sources: [],
+      usage: {},
       eval: 'good',
       read: false,
+      inputId: null,
+      metadata: {},
     },
   ],
   visitorEmail = 'hello@world.com',

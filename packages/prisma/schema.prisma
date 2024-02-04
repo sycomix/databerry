@@ -18,12 +18,18 @@ model Organization {
   agents           Agent[]
   apiKeys          UserApiKey[]
   sessions         Session[]
+  approvals        ActionApproval[]
   datastores       Datastore[]
   memberships      Membership[]
   conversations    Conversation[]
   subscriptions    Subscription[]
   appDatasources   AppDatasource[]
   serviceProviders ServiceProvider[]
+  forms            Form[]
+  mailInboxes         MailInbox[]
+  contacts            Contact[]
+  visitors            Visitor[]
+
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -40,6 +46,9 @@ model Membership {
 
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String?
+
+  assignedConversations Conversation[] @relation("assignees")
+
 
   // When the user joins, we will clear out the name and email and set the user.
   invitedName  String? @map("invited_name")
@@ -74,6 +83,7 @@ model User {
   apiKeys       UserApiKey[]
   usage         Usage?
   conversations Conversation[]
+  messages      Message[]
 
   serviceProviders ServiceProvider[]
 
@@ -82,6 +92,12 @@ model User {
   role GlobalRole @default(CUSTOMER)
 
   viaProduct String? @default("chaindesk") @map("via_product")
+  
+
+  joinedConversationsV2 Conversation[] @relation("participants_users") 
+
+  // TODO: delete after migration and rename joinedConversationsV2 to joinedConversations
+  joinedConversations Conversation[] @relation("participants") 
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -105,6 +121,9 @@ model Usage {
   nbModelTokens         Int @default(0) @map("nb_tokens")
   nbStoredTokens        Int @default(0) @map("nb_stored_tokens")
 
+  notifiedAgentQueriesLimitReached Boolean? @default(false) @map("notified_nb_agent_queries_limit_reached")
+  notifiedStoredTokenLimitReached Boolean? @default(false) @map("notified_nb_stored_tokens_limit_reached")
+
   @@map("usages")
 }
 
@@ -118,6 +137,7 @@ model Datastore {
   visibility  DatastoreVisibility @default(private)
   apiKeys     DatastoreApiKey[]
   tool        Tool[]
+  forms       Form[]
 
   pluginIconUrl              String? @map("plugin_icon_url")
   pluginName                 String? @map("plugin_name")
@@ -211,8 +231,13 @@ model DatastoreApiKey {
 model Agent {
   id String @id @default(cuid())
 
+  hidden      Boolean @default(false)
   name        String
   description String
+  
+  userPrompt  String? @map("user_prompt")
+  systemPrompt String? @map("system_prompt")
+
   prompt      String?
   promptType  PromptType     @default(customer_support) @map("prompt_type")
   iconUrl     String?        @map("icon_url")
@@ -221,8 +246,13 @@ model Agent {
 
   includeSources    Boolean? @default(true) @map("include_sources")
   restrictKnowledge Boolean? @default(true) @map("restrict_knowledge")
+  useMarkdown Boolean? @default(true) @map("use_markdown")
+  useLanguageDetection Boolean? @default(true) @map("use_language_detection")
 
   visibility    AgentVisibility @default(private)
+  messages Message[]
+  joinedConversations Conversation[] @relation("participants_agents")
+  // TODO Deprcate and rename joinedConversations to conversations
   conversations Conversation[]
 
   ownerId String? @map("owner_id")
@@ -232,6 +262,7 @@ model Agent {
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   externalIntegration ExternalIntegration[]
+  serviceProviders    ServiceProvider[]
 
   nbQueries Int? @default(0) @map("nb_queries")
 
@@ -242,11 +273,40 @@ model Agent {
   handle  String?  @unique @map("handle")
   domains Domain[]
   leads   Lead[]
+  contacts   Contact[]
+  
+  approvals ActionApproval[]
+
+  form   Form?  @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId String? @unique @map("form_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("agents")
+}
+
+model ActionApproval {
+  id String @id @default(cuid())
+
+  payload Json?
+
+  tool   Tool?   @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  toolId String? @map("tool_id")
+
+  message   Message?   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String? @map("message_id")
+
+  agent   Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId String? @map("agent_id")
+
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("action_approvals")
 }
 
 model Domain {
@@ -263,24 +323,61 @@ model Domain {
 
 model Conversation {
   id        String  @id @default(cuid())
-  visitorId String? @map("visitor_id")
-  userId    String? @map("user_id")
-  user      User?   @relation(fields: [userId], references: [id])
+  title     String?
 
-  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  agentId  String?   @map("agent_id")
   messages Message[]
 
+  isAiEnabled Boolean? @default(true)  @map("is_ai_enabled")
+  
   channel ConversationChannel @default(dashboard)
 
   status ConversationStatus @default(UNRESOLVED)
 
   metadata Json?
 
+  channelExternalId String? @unique @map("channel_external_id")
+  channelCredentialsId String? @map("channel_credentials_id")
+  channelCredentials ServiceProvider? @relation(fields:[channelCredentialsId],references:[id])
+
   organizationId String?       @map("organization_id")
   organization   Organization? @relation(fields: [organizationId], references: [id])
 
+  mailInbox   MailInbox? @relation(fields: [mailInboxId], references: [id])
+  mailInboxId String?          @map("mail_inbox_id")
+
+
   lead Lead?
+ 
+
+  formSubmissions FormSubmission[]
+
+  assignees  Membership[] @relation("assignees")
+
+  priority ConversationPriority @default(MEDIUM)
+  
+  form    Form?    @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId  String?   @map("form_id")
+
+  // DEPRECATED: REMOVE AFTER MIGRATion
+  participants User[] @relation("participants")
+  contacts Contact[]
+
+  // Participants
+  participantsUsers User[] @relation("participants_users")
+  participantsAgents Agent[] @relation("participants_agents")
+  participantsContacts Contact[] @relation("participants_contacts")
+  participantsVisitors Visitor[] @relation("participants_visitors")
+
+  // Still need this one as multiple use cases are based on single agent/conversation this e.g. /agents/:id/query
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  agentId  String?   @map("agent_id")
+
+  // Todo: deprecate in favor of participants
+  userId    String? @map("user_id")
+  user      User?   @relation(fields: [userId], references: [id])
+
+  // Todo: deprecate in favor of visitorID relation
+  visitorId String? @map("visitor_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
@@ -288,18 +385,49 @@ model Conversation {
   @@index([visitorId], type: Hash)
   @@map("conversations")
 }
-
 model Message {
   id             String        @id @default(cuid())
   text           String
+  html           String?
   from           MessageFrom
+
   conversationId String?       @map("conversation_id")
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   sources        Json?
+
+  usage          Json?
+
+  externalId     String?       @unique @map("external_id")
+
+  // Sender is one of visitor, contact, user, agent
+  userId String?       @map("user_id")
+  user   User? @relation(fields: [userId], references: [id])
+
+  contactId String?       @map("contact_id")
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  visitorId      String?       @map("visitor_id")
+  visitor        Visitor? @relation(fields: [visitorId], references: [id])
+
+  agentId String?       @map("agent_id")
+  agent   Agent? @relation(fields: [agentId], references: [id])
+  // 
+
+  metadata       Json?
+
+  inputId String?       @map("input_id")
+  input   Message? @relation(fields: [inputId], references: [id], name: "input")
+
+  outputs Message[] @relation("input")
 
   eval MessageEval?
 
+  approvals ActionApproval[]
+
   read Boolean? @default(false)
+
+  attachments Attachment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
@@ -316,6 +444,15 @@ model Tool {
 
   datastoreId String?    @map("datastore_id")
   datastore   Datastore? @relation(fields: [datastoreId], references: [id], onDelete: Cascade)
+
+  formId String?    @map("form_id")
+  form   Form? @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  config Json?
+
+  serviceProviderId String?          @map("service_provider_id")
+  serviceProvider   ServiceProvider? @relation(fields: [serviceProviderId], references: [id], onDelete: Cascade)
+  approvals ActionApproval[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
@@ -453,6 +590,7 @@ model ServiceProvider {
   name         String?
   refreshToken String? @map("refresh_token")
   accessToken  String? @map("access_token")
+  externalId   String? @map("external_id")
 
   config Json?
 
@@ -463,10 +601,16 @@ model ServiceProvider {
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   appDatasources AppDatasource[]
+  agents Agent[]
+  tools Tool[]
+
+  conversations Conversation[]
+  // mailInboxes            MailInbox[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([type, externalId], name: "unique_external_id")
   @@map("service_providers")
 }
 
@@ -507,6 +651,64 @@ model Lead {
 
   @@map("leads")
 }
+model Form {
+  id          String  @id @default(cuid())
+
+  name        String
+
+  draftConfig Json?
+  publishedConfig Json?
+  
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // responses FormResponse[]
+ 
+  datastore            Datastore?            @relation(fields: [datastoreId], references: [id], onDelete: Cascade)
+  datastoreId          String?               @map("datastore_id")
+  
+  
+  conversations Conversation[]
+  submissions  FormSubmission[]
+  tool        Tool[]
+
+  agent Agent?
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("forms")
+}
+
+model FormSubmission {
+  id          String  @id @default(cuid())
+  
+  status FormStatus @default(IN_PROGRESS)
+  
+  data Json?
+
+  form   Form? @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId String?       @map("form_id")
+
+  conversationId String?  @map("conversation_id")
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("form_submissions")
+}
+
+// model FormResponse {
+//   id          String  @id @default(cuid())
+
+//   data Json?
+
+//   formId String?       @map("form_id")
+//   form   Form? @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+//   createdAt DateTime @default(now()) @map("created_at")
+//   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+//   @@map("form_responses")
+// }
 
 model XPBNPEval {
   id             String  @id @default(cuid())
@@ -529,6 +731,130 @@ model XPBNPEval {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("xp_bnp_evals")
+}
+
+model LLMTaskOutput {
+  id             String  @id @default(cuid())
+  type            LLMTaskOutputType
+
+  externalId     String? @map("external_id")
+
+
+  output Json?
+  usage  Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([type, externalId], name: "unique_external_id")
+  @@map("llm_task_outputs")
+}
+
+model MailInbox {
+
+  id String  @id @default(cuid())
+
+  name String
+  description String?
+
+  alias String @unique
+  fromName String? @map("from_name")
+  signature String? @map("signature")
+
+  showBranding Boolean? @default(true) @map("show_branding")
+
+  customEmail String? @map("custom_email")
+  isCustomEmailVerified Boolean? @default(false) @map("is_custom_email_verified")
+  conversations    Conversation[]
+
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customEmailVerificationToken   VerificationCode?  @relation(fields: [customEmailVerificationTokenId], references: [code])
+  customEmailVerificationTokenId String? @unique @map("custom_email_verification_token_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("mail_inboxes")
+}
+
+model Attachment {
+  id String  @id @default(cuid())
+  name String
+  url String
+  size Int
+  mimeType String @map("mime_type")
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String  @map("message_id")
+
+  @@map("attachments")
+}
+
+model Contact {
+  id String  @id @default(cuid())
+
+  email String?
+  phoneNumber String? @map("phone_number")
+  externalId String? @map("external_id")
+
+  firstName String? @map("first_name")
+  lastName String? @map("last_name")
+
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  agent   Agent?  @relation(fields: [agentId], references: [id])
+  agentId String? @map("agent_id")
+
+  conversations Conversation[]
+  conversationsV2 Conversation[] @relation("participants_contacts")
+  messages Message[]
+
+  visitors Visitor[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([email, organizationId], name: "unique_email_for_org")
+  @@unique([phoneNumber, organizationId], name: "unique_phone_number_for_org")
+  @@unique([externalId, organizationId], name: "unique_external_id_for_org")  
+  @@map("contacts") 
+}
+
+model Visitor {
+  id String  @id @default(cuid())
+
+  contact   Contact?  @relation(fields: [contactId], references: [id])
+  contactId String? @map("contact_id")
+
+  organizationId String?       @map("organization_id")
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+
+  externalId String? @map("external_id")
+
+  conversations Conversation[] @relation("participants_visitors")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+ @@unique([externalId, organizationId], name: "unique_external_id_for_org")
+ @@map("visitors")  
+}
+
+model VerificationCode {
+  code   String              @id @default(cuid())
+
+  mailInbox   MailInbox? 
+  mailInboxId String?        @map("maiL_inbox_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("verification_codes")
+}
+
+
+enum LLMTaskOutputType {
+  youtube_summary
 }
 
 enum DatastoreVisibility {
@@ -560,11 +886,19 @@ enum DatasourceType {
   notion
   notion_page
   qa
+  youtube_video
+  youtube_bulk
 }
 
 enum ServiceProviderType {
   google_drive
   notion
+  website
+  crisp
+  slack
+  zendesk
+  whatsapp
+  // smtp
 }
 
 enum DatastoreType {
@@ -574,8 +908,10 @@ enum DatastoreType {
 
 enum ToolType {
   datastore
+  form
   connector
   agent
+  http
 }
 
 enum SubscriptionPlan {
@@ -630,6 +966,9 @@ enum ConversationChannel {
   crisp
   zapier
   api
+  form
+  mail
+  whatsapp
 }
 
 enum AgentModelName {
@@ -637,6 +976,8 @@ enum AgentModelName {
   gpt_3_5_turbo_16k
   gpt_4
   gpt_4_32k
+  gpt_4_turbo
+  gpt_4_turbo_vision
 }
 
 enum MessageEval {
@@ -659,4 +1000,15 @@ enum ConversationStatus {
      RESOLVED
      UNRESOLVED
      HUMAN_REQUESTED
+}
+enum FormStatus {
+  COMPLETED
+  IN_PROGRESS
+  ABANDONED
+}
+
+enum ConversationPriority {
+  LOW
+  MEDIUM
+  HIGH
 }

@@ -8,6 +8,7 @@ import EmailProvider from 'next-auth/providers/email';
 import GithubProvider from 'next-auth/providers/github';
 import GoogleProvider from 'next-auth/providers/google';
 import { Middleware } from 'next-connect';
+import requestIp from 'request-ip';
 import { v4 as uuidv4 } from 'uuid';
 
 import generateFunId from '@chaindesk/lib/generate-fun-id';
@@ -23,6 +24,8 @@ import {
 } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
+import { AnalyticsEvents, capture, profile } from './analytics-server';
+import getRequestCountry from './get-request-country';
 import getRootDomain from './get-root-domain';
 import sendVerificationRequest from './verification-sender';
 
@@ -44,7 +47,7 @@ const CustomPrismaProvider = (req: NextApiRequest) => (p: PrismaClient) => {
         } as Prisma.SessionCreateArgs['data'],
       });
     },
-    createUser: (data: Prisma.UserCreateArgs['data']) => {
+    createUser: async (data: Prisma.UserCreateArgs['data']) => {
       let product = undefined as string | undefined;
       try {
         product = new URL(req.query.callbackUrl as string)?.searchParams?.get(
@@ -52,7 +55,7 @@ const CustomPrismaProvider = (req: NextApiRequest) => (p: PrismaClient) => {
         ) as string;
       } catch (err) {}
 
-      return p.user.create({
+      const user = await p.user.create({
         data: {
           ...data,
           ...(product ? { viaProduct: product } : {}),
@@ -76,6 +79,24 @@ const CustomPrismaProvider = (req: NextApiRequest) => (p: PrismaClient) => {
           },
         },
       });
+
+      capture({
+        event: AnalyticsEvents.USER_SIGNUP,
+        payload: {
+          userId: user.id,
+        },
+      });
+
+      profile({
+        userId: user.id,
+        email: user.email,
+        createdAt: user.createdAt,
+        firstName: user.name!,
+        plan: SubscriptionPlan.level_0,
+        product: user.viaProduct,
+      });
+
+      return user;
     },
     async getSessionAndUser(sessionToken: string) {
       const userAndSession = await p.session.findUnique({
@@ -155,6 +176,7 @@ export const authOptions = (req: NextApiRequest): AuthOptions => {
     pages: {
       verifyRequest: '/auth/verify-request',
       error: '/auth/error',
+      signIn: '/auth/signin',
     },
     callbacks: {
       async session(props) {
@@ -246,7 +268,9 @@ export const sessionUserInclude: Prisma.UserInclude = {
   usage: true,
   subscriptions: {
     where: {
-      status: 'active',
+      status: {
+        in: ['active', 'trialing'],
+      },
     },
   },
   memberships: {
@@ -260,7 +284,11 @@ export const sessionUserInclude: Prisma.UserInclude = {
   },
   _count: {
     select: {
-      agents: true,
+      agents: {
+        where: {
+          hidden: false,
+        },
+      },
       datastores: true,
     },
   },
@@ -270,12 +298,18 @@ export const sessionOrganizationInclude: Prisma.OrganizationInclude = {
   usage: true,
   subscriptions: {
     where: {
-      status: 'active',
+      status: {
+        in: ['active', 'trialing'],
+      },
     },
   },
   _count: {
     select: {
-      agents: true,
+      agents: {
+        where: {
+          hidden: false,
+        },
+      },
       datastores: true,
     },
   },
@@ -344,7 +378,7 @@ const handleGetSession = async (
       session = {
         authType: 'apiKey',
         user: undefined,
-        roles: [MembershipRole.ADMIN],
+        roles: [MembershipRole.OWNER],
         organization: formatOrganizationSession(key.organization!),
         expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toDateString(),
       };
@@ -395,6 +429,8 @@ export const withLogger: Middleware<
   req.logger = logger.child({
     requestId: req.requestId,
     requestPath: req.url,
+    requestIP: requestIp.getClientIp(req),
+    requestCountry: getRequestCountry(req),
   });
 
   req.logger.info(req.method);

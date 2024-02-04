@@ -1,4 +1,6 @@
 const path = require('path');
+const os = require('os');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 });
@@ -12,13 +14,23 @@ const nextConfig = {
   publicRuntimeConfig: {
     version: pkg.version,
   },
-  transpilePackages: ['@chaindesk/lib', '@chaindesk/emails'],
+  transpilePackages: [
+    '@chaindesk/lib',
+    '@chaindesk/emails',
+    '@chaindesk/ui',
+    '@chaindesk/integrations',
+  ],
   experimental: {
     outputFileTracingRoot: path.join(__dirname, '../../'),
   },
 
   async redirects() {
     return [
+      {
+        source: '/signin',
+        destination: '/auth/signin',
+        permanent: true,
+      },
       {
         source: '/',
         destination: '/agents',
@@ -46,24 +58,12 @@ const nextConfig = {
     return {
       beforeFiles: [
         {
-          source: '/',
-          destination: '/use-cases/customer-support',
-          has: [
-            {
-              type: 'host',
-              value: 'www.chatbotgpt.ai',
-            },
-          ],
+          source: '/api/integrations/crisp/hooks',
+          destination: '/api/integrations/crisp/webhook',
         },
         {
-          source: '/pricing',
-          destination: '/use-cases/customer-support/pricing',
-          has: [
-            {
-              type: 'host',
-              value: 'www.chatbotgpt.ai',
-            },
-          ],
+          source: '/api/integrations/crisp/config-update',
+          destination: '/api/integrations/crisp/config',
         },
         {
           source: '/',
@@ -238,6 +238,42 @@ const nextConfig = {
       playwright: 'commonjs playwright',
       bullmq: 'commonjs bullmq',
     });
+
+    config.plugins.push(
+      new CopyWebpackPlugin({
+        patterns: [
+          {
+            from: '../../packages/integrations/**/static/**',
+            globOptions: {
+              ignore: ['**/integrations/node_modules'],
+            },
+            to({ context, absoluteFilename }) {
+              // Adds compatibility for windows path
+              if (os.platform() === 'win32') {
+                const absoluteFilenameWin = absoluteFilename.replaceAll(
+                  '\\',
+                  '/'
+                );
+                const contextWin = context.replaceAll('\\', '/');
+                const appName = /integrations\/(.*)\/static/.exec(
+                  absoluteFilenameWin
+                );
+                return Promise.resolve(
+                  `${contextWin}/public/integrations/${appName[1]}/[name][ext]`
+                );
+              }
+              const appName = /integrations\/(.*)\/static/.exec(
+                absoluteFilename
+              );
+
+              return Promise.resolve(
+                `${context}/public/integrations/${appName[1]}/[name][ext]`
+              );
+            },
+          },
+        ],
+      })
+    );
 
     if (isServer && config.name === 'server') {
       const oldEntry = config.entry;

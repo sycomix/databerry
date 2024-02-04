@@ -1,6 +1,7 @@
 import Cors from 'cors';
 import { NextApiResponse } from 'next';
 
+import { AnalyticsEvents, capture } from '@chaindesk/lib/analytics-server';
 import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
 import {
   createLazyAuthHandler,
@@ -44,6 +45,17 @@ export const queryURL = async (
     where: {
       id: datastoreId,
     },
+    include: {
+      organization: {
+        include: {
+          memberships: {
+            where: {
+              role: 'OWNER',
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!datastore) {
@@ -65,6 +77,15 @@ export const queryURL = async (
     filters: data.filters,
   });
 
+  capture?.({
+    event: AnalyticsEvents.DATASTORE_QUERY,
+    payload: {
+      userId: datastore?.organization?.memberships?.[0]?.userId!,
+      organizationId: session?.organization?.id,
+      datastoreId: datastore.id,
+    },
+  });
+
   return (results || []).map((each) => ({
     text: each.pageContent,
     score: each.metadata.score || 0,
@@ -72,6 +93,7 @@ export const queryURL = async (
     datasource_name: each.metadata.datasource_name,
     datasource_id: each.metadata.datasource_id,
     custom_id: each.metadata.custom_id,
+    offset: each.metadata.chunk_offset,
   }));
 };
 

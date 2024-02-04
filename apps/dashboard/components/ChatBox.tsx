@@ -1,13 +1,22 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
+import ErrorRoundedIcon from '@mui/icons-material/ErrorRounded';
+import OpenInFullOutlinedIcon from '@mui/icons-material/OpenInFullOutlined';
 import SchoolTwoToneIcon from '@mui/icons-material/SchoolTwoTone';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
 import StopRoundedIcon from '@mui/icons-material/StopRounded';
 import ThumbDownAltRoundedIcon from '@mui/icons-material/ThumbDownAltRounded';
 import ThumbUpAltRoundedIcon from '@mui/icons-material/ThumbUpAltRounded';
+import UnfoldLessOutlinedIcon from '@mui/icons-material/UnfoldLessOutlined';
+import UnfoldMoreOutlinedIcon from '@mui/icons-material/UnfoldMoreOutlined';
+import Alert from '@mui/joy/Alert';
 import Avatar from '@mui/joy/Avatar';
 import Box from '@mui/joy/Box';
 import Button from '@mui/joy/Button';
 import Card from '@mui/joy/Card';
+import Chip from '@mui/joy/Chip';
+import ChipDelete from '@mui/joy/ChipDelete';
 import CircularProgress from '@mui/joy/CircularProgress';
 import IconButton from '@mui/joy/IconButton';
 import Skeleton from '@mui/joy/Skeleton';
@@ -18,23 +27,40 @@ import clsx from 'clsx';
 import React, { useCallback, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import InfiniteScroll from 'react-infinite-scroller';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { z } from 'zod';
 
+import ChatMessageCard from '@app/components/ChatMessageCard';
+import Markdown from '@app/components/Markdown';
 import { ChatMessage, MessageEvalUnion } from '@app/hooks/useChat';
 
+import {
+  AcceptedAudioMimeTypes,
+  AcceptedDocumentMimeTypes,
+  AcceptedImageMimeTypes,
+  AcceptedVideoMimeTypes,
+} from '@chaindesk/lib/accepted-mime-types';
 import filterInternalSources from '@chaindesk/lib/filter-internal-sources';
 import type { Source } from '@chaindesk/lib/types/document';
 
+import ChatMessageApproval from './ChatMessageApproval';
+import ChatMessageAttachment from './ChatMessageAttachment';
 import CopyButton from './CopyButton';
 import SourceComponent from './Source';
+import VisuallyHiddenInput from './VisuallyHiddenInput';
+
+const acceptedMimeTypesStr = [
+  ...AcceptedImageMimeTypes,
+  ...AcceptedVideoMimeTypes,
+  ...AcceptedAudioMimeTypes,
+  ...AcceptedDocumentMimeTypes,
+].join(',');
 
 export type ChatBoxProps = {
   messages: ChatMessage[];
-  onSubmit: (message: string) => Promise<any>;
+  onSubmit: (message: string, attachments?: File[]) => Promise<any>;
   messageTemplates?: string[];
   initialMessage?: string;
+  initialMessages?: (string | undefined)[];
   readOnly?: boolean;
   disableWatermark?: boolean;
   renderAfterMessages?: JSX.Element | null;
@@ -47,13 +73,21 @@ export type ChatBoxProps = {
     messageId: string;
     value: MessageEvalUnion;
   }) => any;
-  handleImprove?: (message: ChatMessage) => any;
+  handleImprove?: (message: ChatMessage, msgIndex: number) => any;
   topSettings?: JSX.Element | null;
   handleSourceClick?: (source: Source) => any;
   handleAbort?: any;
   emptyComponent?: JSX.Element | null;
   hideInternalSources?: boolean;
   userImgUrl?: string;
+  organizationId?: string | null;
+  refreshConversation?: () => any;
+  metadata?: Record<string, unknown>;
+  withFileUpload?: boolean;
+  draftReplyInput?: JSX.Element | null;
+  withSources?: boolean;
+  isAiEnabled?: boolean;
+  autoFocus?: boolean;
 };
 
 const Schema = z.object({ query: z.string().min(1) });
@@ -117,6 +151,7 @@ function ChatBox({
   onSubmit,
   messageTemplates,
   initialMessage,
+  initialMessages,
   readOnly,
   renderAfterMessages,
   disableWatermark,
@@ -133,14 +168,28 @@ function ChatBox({
   hideInternalSources,
   renderBottom,
   userImgUrl,
+  organizationId,
+  refreshConversation,
+  metadata,
+  withFileUpload,
+  draftReplyInput,
+  withSources,
+  isAiEnabled,
+  autoFocus,
 }: ChatBoxProps) {
   const scrollableRef = React.useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [firstMsg, setFirstMsg] = useState<ChatMessage>();
+  const [firstMsgs, setFirstMsgs] = useState<ChatMessage[]>([]);
+  // const [ini, setFirstMsg] = useState<ChatMessage>();
+  // const [firstMsg, setFirstMsg] = useState<ChatMessage>();
+  const [files, setFiles] = useState<File[]>([] as File[]);
+  const [isTextAreaExpanded, setIsTextAreaExpended] = useState(false);
+
   const [hideTemplateMessages, setHideTemplateMessages] = useState(false);
   const lastMessageLength =
     messages?.length > 0
-      ? messages?.[messages?.length - 1]?.message?.length
+      ? messages?.[messages?.length - 1]?.message?.length +
+        (messages?.[messages?.length - 1]?.attachments || [])?.length
       : 0;
 
   const methods = useForm<z.infer<typeof Schema>>({
@@ -156,8 +205,10 @@ function ChatBox({
     try {
       setIsLoading(true);
       setHideTemplateMessages(true);
+      setIsTextAreaExpended(false);
       methods.reset();
-      await onSubmit(query);
+      await onSubmit(query, files);
+      setFiles([]);
     } catch (err) {
     } finally {
       setIsLoading(false);
@@ -169,21 +220,45 @@ function ChatBox({
       return;
     }
 
-    scrollableRef.current.scrollTo(0, scrollableRef.current.scrollHeight);
-  }, [lastMessageLength]);
+    scrollableRef.current.scrollTo(0, scrollableRef.current.scrollHeight + 100);
+  }, [lastMessageLength, messages?.length]);
 
   React.useEffect(() => {
-    setTimeout(() => {
-      setFirstMsg(
-        initialMessage?.trim?.()
-          ? { from: 'agent', message: initialMessage }
-          : undefined
-      );
+    const t = setTimeout(() => {
+      const msgs = (initialMessages || [])
+        .filter((each) => !!each?.trim?.())
+        .map(
+          (each) =>
+            ({
+              from: 'agent',
+              message: each?.trim?.(),
+              approvals: [],
+            } as ChatMessage)
+        );
+
+      setFirstMsgs(msgs);
     }, 0);
-  }, [initialMessage]);
+
+    return () => {
+      clearTimeout(t);
+    };
+  }, [initialMessages]);
+
+  const handleOnDraftReply = useCallback(
+    (query: string) => {
+      methods.setValue('query', query, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [methods.setValue]
+  );
+
+  const query = methods.watch('query');
 
   return (
     <Stack
+      className="chaindesk-chatbox"
       direction={'column'}
       gap={2}
       sx={{
@@ -197,8 +272,29 @@ function ChatBox({
         minHeight: '100%',
         mx: 'auto',
         gap: 0,
+        position: 'relative',
       }}
     >
+      {typeof isAiEnabled === 'boolean' &&
+        !isAiEnabled &&
+        messages?.length > 0 && (
+          <Chip
+            color="danger"
+            sx={{
+              left: '50%',
+              transform: 'translateX(-50%)',
+              top: 10,
+              position: 'absolute',
+              zIndex: 1,
+            }}
+            variant="soft"
+            size="sm"
+            startDecorator={<SmartToyRoundedIcon />}
+          >
+            off
+          </Chip>
+        )}
+
       <Stack
         ref={scrollableRef}
         direction={'column'}
@@ -250,30 +346,25 @@ function ChatBox({
           }
         >
           <Stack gap={2}>
-            {firstMsg && (
-              <Stack sx={{ width: '100%' }} direction={'row'} gap={1}>
+            {firstMsgs?.map((each, index) => (
+              <Stack
+                key={index}
+                sx={{ width: '100%' }}
+                direction={'row'}
+                gap={1}
+              >
                 <Avatar
                   size="sm"
                   variant="outlined"
                   src={agentIconUrl || '/app-rounded-bg-white.png'}
                 ></Avatar>
-                <Card
-                  size="sm"
-                  variant={'outlined'}
-                  color={'primary'}
-                  className="prose-sm message-agent"
-                  sx={{
-                    mr: 'auto',
-                    ml: 'none',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {firstMsg?.message}
-                </Card>
+                <ChatMessageCard className="message-agent">
+                  {each && <Markdown>{each.message}</Markdown>}
+                </ChatMessageCard>
               </Stack>
-            )}
+            ))}
 
-            {isLoadingConversation && (
+            {isLoadingConversation && messages?.length <= 0 && (
               <Stack gap={2}>
                 {Array(1)
                   .fill(0)
@@ -292,7 +383,7 @@ function ChatBox({
 
             {messages?.length <= 0 && !isLoadingConversation && emptyComponent}
 
-            {!isLoadingConversation &&
+            {(!isLoadingConversation || messages?.length > 0) &&
               messages.map((each, index) => (
                 <Stack
                   key={index}
@@ -315,7 +406,10 @@ function ChatBox({
                       <Avatar
                         size="sm"
                         variant="outlined"
-                        src={agentIconUrl || '/app-rounded-bg-white.png'}
+                        src={
+                          agentIconUrl ||
+                          '/images/chatbubble-default-icon-sm.gif'
+                        }
                       ></Avatar>
                     )}
 
@@ -327,101 +421,145 @@ function ChatBox({
                       ></Avatar>
                     )}
 
-                    <Stack>
-                      <Card
-                        size="sm"
-                        variant={'outlined'}
-                        className={clsx(
-                          each.from === 'agent'
-                            ? 'message-agent'
-                            : 'message-human'
-                        )}
-                        color={each.from === 'agent' ? 'primary' : 'neutral'}
-                        sx={(theme) => ({
-                          overflowY: 'hidden',
-                          overflowX: 'auto',
-                          marginRight: 'auto',
-                          gap: 0,
-                          maxWidth: '100%',
-                          // '.prose > *:first-child': {
-                          //   pt: 1,
-                          //   mt: 0,
-                          // },
-                          // '.prose > *:last-child': {
-                          //   pb: 1,
-                          //   mb: 0,
-                          // },
-                          py: 1,
-                          px: 2,
-                          [' p ']: {
-                            m: 0,
-                            // p: 0,
-                            maxWidth: '100%',
-                            // wordBreak: 'break-word',
-                          },
-
-                          'h1,h2,h3,h4,h5': {
-                            fontSize: theme.fontSize.sm,
-                          },
-                          table: {
-                            overflowX: 'auto',
-                          },
-                        })}
-                      >
-                        {each.from === 'agent' ? (
-                          <ReactMarkdown
-                            className="prose-sm prose dark:prose-invert"
-                            remarkPlugins={[remarkGfm]}
-                            linkTarget={'_blank'}
+                    <Stack gap={1} sx={{ overflow: 'visible' }}>
+                      {each?.step?.type === 'tool_call' && (
+                        <Chip
+                          size="md"
+                          sx={{ overflow: 'visible' }}
+                          slotProps={{
+                            label: {
+                              sx: {
+                                overflow: 'visible',
+                              },
+                            },
+                          }}
+                        >
+                          <Stack
+                            direction="row"
+                            alignItems={'center'}
+                            gap={0.5}
+                            sx={{ overflow: 'visible' }}
                           >
-                            {each.message}
-                          </ReactMarkdown>
-                        ) : (
-                          <p className="prose-sm ">{each.message}</p>
-                        )}
-
-                        {each?.component}
-
-                        <Stack direction="row" justifyContent={'space-between'}>
-                          {((hideInternalSources
-                            ? filterInternalSources(each?.sources!)
-                            : each?.sources
-                          )?.length || 0) > 0 && (
                             <Box
-                              sx={{
-                                mt: 2,
-                                width: '100%',
-                                maxWidth: '100%',
-                              }}
-                            >
-                              <details>
-                                <summary className="cursor-pointer">
-                                  Sources
-                                </summary>
-                                <Stack
-                                  direction={'column'}
-                                  gap={1}
-                                  sx={{ pt: 1 }}
-                                >
-                                  {(hideInternalSources
-                                    ? filterInternalSources(each?.sources!)
-                                    : each?.sources
-                                  )?.map((source) => (
-                                    <SourceComponent
-                                      key={source.chunk_id}
-                                      source={source}
-                                      onClick={handleSourceClick}
-                                    />
-                                  ))}
-                                </Stack>
-                              </details>
-                            </Box>
-                          )}
+                              className="animate-[bounce_1s_infinite]"
+                              sx={(t) => ({
+                                width: '9px',
+                                height: '9px',
+                                background: t.palette.neutral[400],
+                                borderRadius: '100%',
+                                opacity: 0.7,
+                              })}
+                            ></Box>
+                            <Box
+                              className="animate-[bounce_1s_infinite_-100ms]"
+                              sx={(t) => ({
+                                width: '9px',
+                                height: '9px',
+                                background: t.palette.neutral[400],
+                                borderRadius: '100%',
+                                opacity: 0.7,
+                              })}
+                            ></Box>
+                            <Box
+                              className="animate-[bounce_1s_infinite_-200ms]"
+                              sx={(t) => ({
+                                width: '9px',
+                                height: '9px',
+                                background: t.palette.neutral[400],
+                                borderRadius: '100%',
+                                opacity: 0.7,
+                              })}
+                            ></Box>
+                          </Stack>
+                        </Chip>
+                      )}
+
+                      {each?.approvals?.length > 0 && (
+                        <Stack gap={1}>
+                          {each?.approvals?.map((approval) => (
+                            <ChatMessageApproval
+                              key={approval.id}
+                              approval={approval}
+                              showApproveButton={!!organizationId}
+                              onSumitSuccess={refreshConversation}
+                            />
+                          ))}
                         </Stack>
-                      </Card>
+                      )}
+                      {(each?.message || each?.component) && (
+                        <ChatMessageCard
+                          className={clsx(
+                            each.from === 'agent'
+                              ? 'message-agent'
+                              : 'message-human'
+                          )}
+                        >
+                          {/* {each?.step?.type === 'tool_call' && (
+
+                        )} */}
+
+                          <Markdown>{each.message}</Markdown>
+
+                          {each?.component}
+
+                          {withSources && (
+                            <Stack
+                              direction="row"
+                              justifyContent={'space-between'}
+                            >
+                              {((hideInternalSources
+                                ? filterInternalSources(each?.sources!)
+                                : each?.sources
+                              )?.length || 0) > 0 && (
+                                <Box
+                                  sx={{
+                                    mt: 2,
+                                    width: '100%',
+                                    maxWidth: '100%',
+                                  }}
+                                >
+                                  <details>
+                                    <summary className="cursor-pointer">
+                                      Sources
+                                    </summary>
+                                    <Stack
+                                      direction={'column'}
+                                      gap={1}
+                                      sx={{ pt: 1 }}
+                                    >
+                                      {(hideInternalSources
+                                        ? filterInternalSources(each?.sources!)
+                                        : each?.sources
+                                      )?.map((source) => (
+                                        <SourceComponent
+                                          key={source.chunk_id}
+                                          source={source}
+                                          onClick={handleSourceClick}
+                                        />
+                                      ))}
+                                    </Stack>
+                                  </details>
+                                </Box>
+                              )}
+                            </Stack>
+                          )}
+                        </ChatMessageCard>
+                      )}
+
+                      {(each?.attachments?.length || 0) > 0 && (
+                        <Stack gap={1}>
+                          {each?.attachments?.map((each) => (
+                            <ChatMessageAttachment
+                              key={each.id}
+                              attachment={each}
+                            />
+                          ))}
+                        </Stack>
+                      )}
                       {each.from === 'agent' &&
                         each?.id &&
-                        !each?.disableActions && (
+                        !each?.disableActions &&
+                        !!each?.message && (
                           <Stack
                             direction="row"
                             marginLeft={'auto'}
@@ -440,7 +578,7 @@ function ChatBox({
                                 variant="plain"
                                 color="neutral"
                                 startDecorator={<SchoolTwoToneIcon />}
-                                onClick={() => handleImprove(each)}
+                                onClick={() => handleImprove(each, index)}
                               >
                                 Improve
                               </Button>
@@ -451,7 +589,6 @@ function ChatBox({
                   </Stack>
                 </Stack>
               ))}
-
             {isLoading && (
               <CircularProgress
                 variant="soft"
@@ -535,92 +672,224 @@ function ChatBox({
           <Stack width="100%" gap={0.5}>
             {topSettings}
 
+            {files?.length > 0 && (
+              <Stack gap={1} sx={{ mb: 1 }}>
+                <Stack direction="row" sx={{ flexWrap: 'wrap' }} gap={1}>
+                  {files.map((each, index) => (
+                    <Chip
+                      size="lg"
+                      key={each.name}
+                      variant="soft"
+                      color="primary"
+                      endDecorator={
+                        <ChipDelete
+                          disabled={isLoading}
+                          onDelete={() =>
+                            setFiles(files.filter((_, i) => i !== index))
+                          }
+                        />
+                      }
+                    >
+                      {each.name}
+                    </Chip>
+                  ))}
+                </Stack>
+                <Alert
+                  color="warning"
+                  size="sm"
+                  startDecorator={<ErrorRoundedIcon />}
+                >
+                  Currently, uploaded files are intended for human use and will
+                  not be processed by the AI Agent
+                </Alert>
+              </Stack>
+            )}
+
             <Textarea
+              autoFocus={!!autoFocus}
               slotProps={{
                 textarea: {
                   id: 'chatbox-input',
                 },
               }}
-              maxRows={4}
-              minRows={1}
+              maxRows={24}
+              minRows={isTextAreaExpanded ? 18 : 1}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   methods.handleSubmit(submit)(e);
                 }
               }}
-              sx={{
+              sx={(t) => ({
+                ...(isTextAreaExpanded
+                  ? {
+                      position: 'absolute',
+                      bottom: 0,
+                      zIndex: 1,
+                    }
+                  : {}),
                 width: '100%',
                 flexDirection: 'row',
                 alignItems: 'center',
                 '.MuiTextarea-endDecorator': {
-                  'margin-block-start': 'auto',
+                  // marginBlockStart: 'auto',
+                  marginBlock: 0,
+                  marginTop: 'auto',
                 },
-              }}
-              // disabled={!state.currentDatastoreId || state.loading}
+                '.MuiTextarea-startDecorator': {
+                  // marginBlockStart: 'auto',
+                  // marginBlockStart: 0,
+                  // marginTop: 'auto',
+                  // width: '100%',
+                  marginBlockEnd: 0,
+                  marginTop: 'auto',
+                  // margin: 0,
+                },
+              })}
               variant="outlined"
+              startDecorator={
+                <Stack
+                  direction={'row'}
+                  justifyContent={'space-between'}
+                  sx={{ width: '100%' }}
+                >
+                  <IconButton
+                    variant="plain"
+                    sx={{ maxHeight: '100%' }}
+                    size="sm"
+                    onClick={() => setIsTextAreaExpended(!isTextAreaExpanded)}
+                  >
+                    {isTextAreaExpanded ? (
+                      <UnfoldLessOutlinedIcon />
+                    ) : (
+                      <UnfoldMoreOutlinedIcon />
+                    )}
+                  </IconButton>
+                </Stack>
+              }
+              // disabled={isLoading} // Disabled otherwise stop button is not clickable
+
               endDecorator={
-                <Stack direction="row">
-                  {!isLoading && (
+                <Stack
+                  direction={'row'}
+                  justifyContent={'space-between'}
+                  sx={{ width: '100%' }}
+                >
+                  {/* <Button>hello</Button> */}
+
+                  {draftReplyInput &&
+                    React.cloneElement(draftReplyInput, {
+                      query,
+                      onReply: handleOnDraftReply,
+                    })}
+
+                  {withFileUpload && (
                     <IconButton
-                      size="sm"
-                      type="submit"
-                      disabled={isLoading}
+                      variant="plain"
                       sx={{ maxHeight: '100%' }}
+                      size="sm"
+                      component="label"
+                      disabled={isLoading}
                     >
-                      <SendRoundedIcon />
+                      <AttachFileRoundedIcon />
+                      <VisuallyHiddenInput
+                        accept={acceptedMimeTypesStr}
+                        type="file"
+                        multiple
+                        onChange={async (e) => {
+                          const f = Array.from(e.target.files!);
+
+                          const maxFileSize = 5000000; // 5MB
+
+                          const found = f.find((one) => one.size > maxFileSize);
+
+                          if (found) {
+                            e.target.value = '';
+                            return alert('File size is limited to 5MB');
+                          }
+
+                          setFiles(f);
+                        }}
+                      />
                     </IconButton>
                   )}
 
-                  {isLoading && handleAbort && (
-                    <IconButton
-                      size="sm"
-                      color="danger"
-                      sx={{ maxHeight: '100%' }}
-                      variant={'soft'}
-                      onClick={() => {
-                        handleAbort?.();
-                      }}
-                    >
-                      <StopRoundedIcon />
-                    </IconButton>
-                  )}
+                  <Stack direction="row" sx={{ ml: 'auto' }}>
+                    {!isLoading && (
+                      <IconButton
+                        size="sm"
+                        type="submit"
+                        disabled={isLoading || !methods.formState.isValid}
+                        sx={{ maxHeight: '100%' }}
+                        color="primary"
+                        variant="soft"
+                      >
+                        <SendRoundedIcon />
+                      </IconButton>
+                    )}
+
+                    {isLoading && handleAbort && (
+                      <IconButton
+                        size="sm"
+                        color="danger"
+                        sx={{ maxHeight: '100%' }}
+                        variant={'soft'}
+                        onClick={() => {
+                          handleAbort?.();
+                        }}
+                      >
+                        <StopRoundedIcon />
+                      </IconButton>
+                    )}
+                  </Stack>
                 </Stack>
               }
               {...methods.register('query')}
+              onBlur={(e) => {}} // // Otherwise got error when submiting with return key 🤷
             />
 
-            <Stack
-              direction="row"
-              sx={{
-                position: 'relative',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                maxWidth: '100%',
-                overflowX: 'hidden',
-              }}
-            >
-              {renderBottom}
-
+            <Stack>
+              <Stack
+                direction="row"
+                sx={{
+                  position: 'relative',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  maxWidth: '100%',
+                  overflowX: 'auto',
+                  // Scrollbar
+                  '&::-webkit-scrollbar': {
+                    height: '0',
+                  },
+                }}
+              >
+                {renderBottom}
+              </Stack>
               {!disableWatermark && (
-                <a
-                  href="https://chaindesk.ai"
-                  target="_blank"
-                  style={{
-                    textDecoration: 'none',
-                    marginLeft: 'auto',
-                  }}
-                >
-                  <Box className="truncate" sx={{ whiteSpace: 'nowrap' }}>
-                    <Typography level="body-xs">
-                      Powered by{' '}
-                      <Typography color="primary" fontWeight={'bold'}>
-                        Chaindesk
-                      </Typography>
-                    </Typography>
-                  </Box>
-                </a>
+                <Stack sx={{ mt: 1 }}>
+                  <a
+                    href="https://chaindesk.ai"
+                    target="_blank"
+                    style={{
+                      textDecoration: 'none',
+                      marginLeft: 'auto',
+                      marginRight: 'auto',
+                      // marginBottom: '2px',
+                    }}
+                  >
+                    <Chip variant="outlined" size="sm" color="neutral">
+                      <Box className="truncate" sx={{ whiteSpace: 'nowrap' }}>
+                        <Typography level="body-xs" fontSize={'10px'}>
+                          Powered by{' '}
+                          <Typography color="primary" fontWeight={'bold'}>
+                            ⚡️ Chaindesk
+                          </Typography>
+                        </Typography>
+                      </Box>
+                    </Chip>
+                  </a>
+                </Stack>
               )}
             </Stack>
           </Stack>

@@ -1,16 +1,24 @@
+import AllInboxRoundedIcon from '@mui/icons-material/AllInboxRounded';
 import ApiRoundedIcon from '@mui/icons-material/ApiRounded';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded';
+import ChecklistRoundedIcon from '@mui/icons-material/ChecklistRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import FeedRoundedIcon from '@mui/icons-material/FeedRounded';
 import HelpRoundedIcon from '@mui/icons-material/HelpRounded';
 import InboxRoundedIcon from '@mui/icons-material/InboxRounded';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import ManageAccountsRoundedIcon from '@mui/icons-material/ManageAccountsRounded';
 import NewReleasesRoundedIcon from '@mui/icons-material/NewReleasesRounded';
 import QuestionMarkRoundedIcon from '@mui/icons-material/QuestionMarkRounded';
+import RecentActorsIcon from '@mui/icons-material/RecentActors';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded'; // Icons import
 import StorageRoundedIcon from '@mui/icons-material/StorageRounded';
 import TwitterIcon from '@mui/icons-material/Twitter';
+import WarningIcon from '@mui/icons-material/Warning';
+import { ColorPaletteProp } from '@mui/joy';
+import Alert from '@mui/joy/Alert';
 import Badge from '@mui/joy/Badge';
 import Box from '@mui/joy/Box';
 import Button from '@mui/joy/Button';
@@ -35,6 +43,7 @@ import useSWR from 'swr';
 
 import AccountCard from '@app/components/AccountCard';
 import UserMenu from '@app/components/UserMenu';
+import useModal from '@app/hooks/useModal';
 import useProduct, { ProductType } from '@app/hooks/useProduct';
 import { countUnread } from '@app/pages/api/logs/count-unread';
 import { getStatus } from '@app/pages/api/status';
@@ -44,13 +53,18 @@ import { fetcher } from '@chaindesk/lib/swr-fetcher';
 import { AppStatus, RouteNames } from '@chaindesk/lib/types';
 import { Prisma } from '@chaindesk/prisma';
 
+import SelectOrganizationInput from '../AccountCard/SelectOrganizationInput';
+import StripePricingTable from '../StripePricingTable';
+import UsageLimitModal from '../UsageLimitModal';
+
 function NavigationLink(props: {
   href: string;
   target?: string;
   active?: boolean;
   icon?: React.ReactNode;
-  label?: string;
+  label?: string | React.ReactElement;
   isExperimental?: boolean;
+  isNew?: boolean;
 }) {
   return (
     <Link key={props.href} href={props.href} target={props?.target}>
@@ -66,16 +80,33 @@ function NavigationLink(props: {
           </ListItemDecorator>
           <ListItemContent>{props.label}</ListItemContent>
 
-          {props.isExperimental && (
-            <Chip
-              startDecorator={<NewReleasesRoundedIcon />}
-              size="sm"
-              variant="soft"
-              color="warning"
-            >
-              Beta
-            </Chip>
-          )}
+          <Stack direction="row" alignItems={'center'} sx={{ ml: 'auto' }}>
+            {props.isNew && (
+              <Chip
+                className="text-white bg-gradient-to-r from-orange-500 via-red-500 to-red-500"
+                size="sm"
+              >
+                new
+              </Chip>
+            )}
+
+            {props.isExperimental && (
+              <Chip
+                className="text-white bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
+                size="sm"
+              >
+                beta
+              </Chip>
+              // <Chip
+              //   startDecorator={<NewReleasesRoundedIcon />}
+              //   size="sm"
+              //   variant="soft"
+              //   color="warning"
+              // >
+              //   Beta
+              // </Chip>
+            )}
+          </Stack>
         </ListItemButton>
       </ListItem>
     </Link>
@@ -84,8 +115,13 @@ function NavigationLink(props: {
 
 export default function Navigation() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session } = useSession({
+    required: true,
+  });
   const { product } = useProduct();
+  // const upgradeModal = useModal({
+  //   disableClose: !session?.organization?.isPremium,
+  // });
 
   const getStatusQuery = useSWR<Prisma.PromiseReturnType<typeof getStatus>>(
     '/api/status',
@@ -104,8 +140,49 @@ export default function Navigation() {
   );
 
   const { publicRuntimeConfig } = getConfig();
-  const isStatusOK = getStatusQuery?.data?.status === AppStatus.OK;
   const isMaintenance = !!getStatusQuery?.data?.isMaintenance;
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (
+        window.location.hostname === 'app.databerry.ai' ||
+        window.location.hostname === 'www.chaindesk.ai' ||
+        window.location.hostname === 'chaindesk.ai'
+      ) {
+        window.location.href =
+          'https://app.chaindesk.ai' + window.location.pathname;
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (
+      getStatusQuery?.data?.status &&
+      getStatusQuery?.data?.status !== AppStatus.OK
+    ) {
+      toast.error(
+        "We're experiencing some issues. Please try again later. Sorry for the inconvenience!",
+        {
+          duration: 100000,
+          id: 'status-error',
+        }
+      );
+    }
+  }, [getStatusQuery?.data?.status]);
+
+  // React.useEffect(() => {
+  //   const timeout = setTimeout(() => {
+  //     if (!session?.organization?.isPremium) {
+  //       upgradeModal.open();
+  //     } else {
+  //       upgradeModal.close();
+  //     }
+  //   }, 5000);
+
+  //   return () => {
+  //     clearTimeout(timeout);
+  //   };
+  // }, [session?.organization?.isPremium]);
 
   React.useEffect(() => {
     if (
@@ -179,6 +256,7 @@ export default function Navigation() {
                 </Badge>
               ),
               active: router.route === RouteNames.LOGS,
+              isNew: false,
             },
             {
               label: 'Agents',
@@ -186,12 +264,44 @@ export default function Navigation() {
               icon: <SmartToyRoundedIcon fontSize="md" />,
               active: router.route.startsWith(RouteNames.AGENTS),
               isExperimental: false,
+              isNew: false,
             },
             {
               label: 'Datastores',
               route: RouteNames.DATASTORES,
               icon: <StorageRoundedIcon fontSize="md" />,
               active: router.route.startsWith(RouteNames.DATASTORES),
+              isNew: false,
+            },
+            {
+              label: 'Forms',
+              route: RouteNames.FORMS,
+              icon: <FeedRoundedIcon fontSize="md" />,
+              active: router.route.startsWith(RouteNames.FORMS),
+              isNew: false,
+              isExperimental: true,
+            },
+            {
+              label: 'Analytics',
+              route: RouteNames.ANALYTICS,
+              icon: <ShowChartIcon fontSize="md" />,
+              active: router.route.startsWith(RouteNames.ANALYTICS),
+              isNew: true,
+            },
+            {
+              label: 'Email Inboxes',
+              route: RouteNames.EMAIL_INBOXES,
+              icon: <AllInboxRoundedIcon fontSize="small" />,
+              active: router.route.startsWith(RouteNames.EMAIL_INBOXES),
+              // isExperimental: true,
+              isNew: true,
+            },
+            {
+              label: 'Contacts',
+              route: RouteNames.CONTACTS,
+              icon: <RecentActorsIcon fontSize="md" />,
+              active: router.route.startsWith(RouteNames.CONTACTS),
+              isNew: true,
             },
           ]
         : []),
@@ -213,6 +323,7 @@ export default function Navigation() {
                 </Badge>
               ),
               active: router.route === RouteNames.LOGS,
+              isNew: false,
             },
             {
               label: 'Agents',
@@ -220,6 +331,7 @@ export default function Navigation() {
               icon: <SmartToyRoundedIcon fontSize="md" />,
               active: router.route.startsWith(RouteNames.AGENTS),
               isExperimental: false,
+              isNew: false,
             },
           ]
         : []),
@@ -231,12 +343,14 @@ export default function Navigation() {
               icon: <ChatRoundedIcon fontSize="md" />,
               active: router.route === RouteNames.CHAT,
               isExperimental: true,
+              isNew: false,
             },
             {
               label: 'Datastores',
               route: RouteNames.DATASTORES,
               icon: <StorageRoundedIcon fontSize="md" />,
               active: router.route.startsWith(RouteNames.DATASTORES),
+              isNew: false,
             },
           ]
         : []),
@@ -257,6 +371,7 @@ export default function Navigation() {
         icon: <ManageAccountsRoundedIcon fontSize="small" />,
         active: router.route.startsWith(RouteNames.SETTINGS),
         isExperimental: false,
+        isNew: false,
       },
     ];
   }, [router.route]);
@@ -269,6 +384,7 @@ export default function Navigation() {
         icon: <HelpRoundedIcon fontSize="small" />,
         target: 'blank',
         isExperimental: false,
+        isNew: false,
       },
       {
         label: 'API Documentation',
@@ -276,6 +392,7 @@ export default function Navigation() {
         icon: <ApiRoundedIcon fontSize="small" />,
         target: 'blank',
         isExperimental: false,
+        isNew: false,
       },
     ];
   }, [router.route]);
@@ -309,6 +426,7 @@ export default function Navigation() {
                 icon={each.icon}
                 label={each.label}
                 isExperimental={each.isExperimental}
+                isNew={each.isNew}
                 target={(each as any).target}
               />
             ))}
@@ -323,6 +441,7 @@ export default function Navigation() {
                 icon={each.icon}
                 label={each.label}
                 isExperimental={each.isExperimental}
+                isNew={each.isNew}
                 target={(each as any).target}
               />
             ))}
@@ -335,6 +454,7 @@ export default function Navigation() {
                 icon={each.icon}
                 label={each.label}
                 isExperimental={each.isExperimental}
+                isNew={each.isNew}
                 target={(each as any).target}
               />
             ))}
@@ -363,19 +483,19 @@ export default function Navigation() {
                         sx={{ width: '100%' }}
                         color="neutral"
                         variant="soft"
-                        endDecorator={
-                          <Chip
-                            className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 "
-                            size="sm"
-                            sx={{
-                              color: 'white',
-                            }}
-                          >
-                            new
-                          </Chip>
-                        }
+                        // endDecorator={
+                        //   <Chip
+                        //     className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 "
+                        //     size="sm"
+                        //     sx={{
+                        //       color: 'white',
+                        //     }}
+                        //   >
+                        //     new
+                        //   </Chip>
+                        // }
                       >
-                        Work Assistant
+                        Search Assistant
                       </Button>
                     </Link>
                   </Stack>
@@ -496,6 +616,8 @@ export default function Navigation() {
       </ListItem> */}
       </List>
 
+      <Divider sx={{ my: 2 }}></Divider>
+
       <AccountCard />
 
       <Divider sx={{ my: 2 }}></Divider>
@@ -547,32 +669,78 @@ export default function Navigation() {
             v{publicRuntimeConfig?.version}
           </Chip>
 
-          <Link href={'https://status.chaindesk.ai/'} target={'_blank'}>
-            <Chip
-              color={isStatusOK ? 'success' : 'danger'}
-              variant="soft"
-              sx={{ cursor: 'pointer' }}
-              endDecorator={<ArrowForwardRoundedIcon />}
-            >
-              <Stack direction="row" alignItems={'center'} gap={1}>
-                <Box
-                  sx={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '99px',
-                    bgcolor: isStatusOK ? 'success.300' : 'danger.500',
-                  }}
-                />
-                <Typography level="body-sm">system status</Typography>
-              </Stack>
-            </Chip>
-          </Link>
+          {getStatusQuery?.data?.status && (
+            <Link href={'https://status.chaindesk.ai/'} target={'_blank'}>
+              <Chip
+                color={
+                  (
+                    {
+                      [AppStatus.OK]: 'success',
+                      [AppStatus.WARNING]: 'warning',
+                      [AppStatus.KO]: 'danger',
+                    } as Record<AppStatus, ColorPaletteProp>
+                  )[getStatusQuery?.data?.status]
+                }
+                variant="soft"
+                sx={{ cursor: 'pointer' }}
+                endDecorator={<ArrowForwardRoundedIcon />}
+              >
+                <Stack direction="row" alignItems={'center'} gap={1}>
+                  <Box
+                    sx={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '99px',
+                      // bgcolor: isStatusOK ? 'success.300' : 'danger.500',
+                      ...(getStatusQuery?.data?.status === AppStatus.OK && {
+                        bgcolor: 'success.300',
+                      }),
+                      ...(getStatusQuery?.data?.status === AppStatus.KO && {
+                        bgcolor: 'danger.500',
+                      }),
+                      ...(getStatusQuery?.data?.status ===
+                        AppStatus.WARNING && {
+                        bgcolor: 'warning.500',
+                      }),
+                    }}
+                  />
+                  <Typography level="body-sm">system status</Typography>
+                </Stack>
+              </Chip>
+            </Link>
+          )}
         </Stack>
       </Stack>
 
       <Divider sx={{ my: 2 }}></Divider>
 
       <UserMenu />
+
+      {/* <UsageLimitModal isOpen={isShowUpgradeModal} handleClose={() => {}} /> */}
+      {/* <upgradeModal.component
+        dialogProps={{
+          maxWidth: 'lg',
+        }}
+      >
+        <Alert
+          color="warning"
+          variant="solid"
+          startDecorator={
+            <WarningIcon sx={{ mt: '2px', mx: '4px' }} fontSize="xl2" />
+          }
+        >
+          Choose a plan in order to access the platform
+        </Alert>
+
+        <Stack spacing={1}>
+          <Typography level="body-md">Organization</Typography>
+          <SelectOrganizationInput />
+        </Stack>
+
+        <Stack sx={{ py: 4 }}>
+          <StripePricingTable />
+        </Stack>
+      </upgradeModal.component> */}
     </Stack>
   );
 }
