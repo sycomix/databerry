@@ -1,7 +1,7 @@
 import { AgentModelName } from '@chaindesk/prisma';
 
 const config = {
-  defaultDatasourceChunkSize: 256,
+  defaultDatasourceChunkSize: 1024,
   datasourceTable: {
     limit: 20,
   },
@@ -15,20 +15,46 @@ export const XPBNPLabels = {
 
 export const ModelConfig = {
   [AgentModelName.gpt_3_5_turbo]: {
-    name: 'gpt-3.5-turbo',
-    maxTokens: 4096,
+    name: 'gpt-3.5-turbo-1106',
+    maxTokens: 16385,
+    cost: 1,
+    providerPriceByInputToken: 0.000001,
+    providerPricePriceByOutputToken: 0.000002,
   },
   [AgentModelName.gpt_3_5_turbo_16k]: {
-    name: 'gpt-3.5-turbo-16k',
-    maxTokens: 16384,
+    name: 'gpt-3.5-turbo-1106',
+    maxTokens: 16385,
+    cost: 1,
+    providerPriceByInputToken: 0.000001,
+    providerPricePriceByOutputToken: 0.000002,
   },
   [AgentModelName.gpt_4]: {
     name: 'gpt-4',
     maxTokens: 8192,
+    cost: 30,
+    providerPriceByInputToken: 0.00003,
+    providerPricePriceByOutputToken: 0.00006,
   },
   [AgentModelName.gpt_4_32k]: {
     name: 'gpt-4-32k',
     maxTokens: 32768,
+    cost: 60,
+    providerPriceByInputToken: 0.00006,
+    providerPricePriceByOutputToken: 0.00012,
+  },
+  [AgentModelName.gpt_4_turbo]: {
+    name: 'gpt-4-0125-preview',
+    maxTokens: 128000,
+    cost: 13,
+    providerPriceByInputToken: 0.00001,
+    providerPricePriceByOutputToken: 0.00003,
+  },
+  [AgentModelName.gpt_4_turbo_vision]: {
+    name: 'gpt-4-vision-preview',
+    maxTokens: 128000,
+    cost: 13,
+    providerPriceByInputToken: 0.00001,
+    providerPricePriceByOutputToken: 0.00003,
   },
 };
 

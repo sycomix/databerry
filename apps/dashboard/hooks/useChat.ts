@@ -1,39 +1,58 @@
+import cuid from 'cuid';
+import { createContext, useCallback, useEffect } from 'react';
+import useSWRInfinite from 'swr/infinite';
+import useSWRMutation from 'swr/mutation';
+
+import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
 import {
   EventStreamContentType,
   fetchEventSource,
-} from '@microsoft/fetch-event-source';
-import { createContext, useCallback, useEffect } from 'react';
-import useSWRInfinite from 'swr/infinite';
-
-import { getConversation } from '@app/pages/api/conversations/[conversationId]';
-
-import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
-import { fetcher } from '@chaindesk/lib/swr-fetcher';
+} from '@chaindesk/lib/fetch-event-source';
+import {
+  fetcher,
+  generateActionFetcher,
+  HTTP_METHOD,
+} from '@chaindesk/lib/swr-fetcher';
+import { NonNull } from '@chaindesk/lib/type-utilites';
 import { SSE_EVENT } from '@chaindesk/lib/types';
 import { Source } from '@chaindesk/lib/types/document';
-import type { ChatResponse, EvalAnswer } from '@chaindesk/lib/types/dtos';
 import type {
+  ChatResponse,
+  CreateAttachmentSchema,
+  EvalAnswer,
+} from '@chaindesk/lib/types/dtos';
+import type {
+  ActionApproval,
+  Attachment,
+  Contact,
   ConversationChannel,
   ConversationStatus,
   Prisma,
 } from '@chaindesk/prisma';
 
+import useFileUpload from './useFileUpload';
 import useRateLimit from './useRateLimit';
 import useStateReducer from './useStateReducer';
 
 const API_URL = process.env.NEXT_PUBLIC_DASHBOARD_URL;
-
 type Props = {
   endpoint?: string;
   channel?: ConversationChannel;
   queryBody?: any;
   datasourceId?: string;
   localStorageConversationIdKey?: string;
-  // TODO: Remove when rate limit implemented from backend
   agentId?: string;
+  disableFetchHistory?: boolean;
+  contact?: CustomContact;
+  context?: string;
 };
 
 export type MessageEvalUnion = 'good' | 'bad';
+
+export type CustomContact = Omit<
+  NonNull<Partial<Contact>>,
+  'updatedAt' | 'createdAt' | 'agentId' | 'organizationId'
+>;
 
 export type ChatMessage = {
   id?: string;
@@ -44,6 +63,13 @@ export type ChatMessage = {
   sources?: Source[];
   component?: JSX.Element;
   disableActions?: boolean;
+  step?: {
+    type: 'tool_call';
+    description?: string;
+  };
+  approvals: ActionApproval[];
+  metadata?: Record<string, any>;
+  attachments?: Attachment[];
 };
 
 export const ChatContext = createContext<ReturnType<typeof useChat>>({} as any);
@@ -52,6 +78,11 @@ export const handleEvalAnswer = async (props: {
   value: MessageEvalUnion;
   messageId: string;
 }) => {
+  let visitorId = '';
+  try {
+    visitorId = localStorage.getItem('visitorId') as string;
+  } catch {}
+
   await fetch(`${API_URL}/api/conversations/eval-answer`, {
     method: 'POST',
     headers: {
@@ -60,13 +91,20 @@ export const handleEvalAnswer = async (props: {
     body: JSON.stringify({
       eval: props.value,
       messageId: props.messageId,
+      visitorId,
     } as EvalAnswer),
   });
 };
 
 const LOCAL_STORAGE_CONVERSATION_ID_KEY = 'conversationId';
 
-const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
+const useChat = ({
+  endpoint,
+  channel,
+  queryBody,
+  disableFetchHistory,
+  ...otherProps
+}: Props) => {
   const localStorageConversationIdKey =
     otherProps.localStorageConversationIdKey ||
     LOCAL_STORAGE_CONVERSATION_ID_KEY;
@@ -81,7 +119,11 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
     mounted: false,
     handleAbort: undefined as any,
     isStreaming: false,
+    isAiEnabled: true,
+    isFormValid: false,
   });
+
+  const { upload } = useFileUpload();
 
   // TODO: Remove when rate limit implemented from backend
   const { isRateExceeded, rateExceededMessage, handleIncrementRateLimitCount } =
@@ -89,32 +131,53 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
       agentId: otherProps.agentId,
     });
 
-  const getConversationQuery = useSWRInfinite<
-    Prisma.PromiseReturnType<typeof getConversation>
-  >((pageIndex, previousPageData) => {
-    if (!state.conversationId) {
-      if (state.hasMoreMessages) {
-        setState({ hasMoreMessages: false });
+  const conversationChatMutation = useSWRMutation(
+    state.conversationId
+      ? `${API_URL}/api/conversations/${state.conversationId}/message`
+      : null,
+    generateActionFetcher(HTTP_METHOD.POST)
+  );
+
+  const getConversationQuery = useSWRInfinite(
+    (pageIndex, previousPageData) => {
+      if (!state.conversationId) {
+        if (state.hasMoreMessages) {
+          setState({ hasMoreMessages: false });
+        }
+
+        return null;
       }
 
-      return null;
+      if (previousPageData && previousPageData?.messages?.length === 0) {
+        setState({
+          hasMoreMessages: false,
+        });
+        return null;
+      }
+
+      const cursor = previousPageData?.messages?.[
+        previousPageData?.messages?.length - 1
+      ]?.id as string;
+
+      return !disableFetchHistory
+        ? `${API_URL}/api/conversations/${state.conversationId}?cursor=${
+            cursor || ''
+          }`
+        : null;
+    },
+    fetcher,
+    {
+      ...(state.isAiEnabled
+        ? {
+            // check if AI is disabled every 30 seconds
+            refreshInterval: 30000,
+          }
+        : {
+            //  If AI is disabled check for new messages every 5 seconds
+            refreshInterval: 5000,
+          }),
     }
-
-    if (previousPageData && previousPageData?.messages?.length === 0) {
-      setState({
-        hasMoreMessages: false,
-      });
-      return null;
-    }
-
-    const cursor = previousPageData?.messages?.[
-      previousPageData?.messages?.length - 1
-    ]?.id as string;
-
-    return `${API_URL}/api/conversations/${state.conversationId}?cursor=${
-      cursor || ''
-    }`;
-  }, fetcher);
+  );
 
   const handleLoadMoreMessages = useCallback(() => {
     if (getConversationQuery.isLoading || getConversationQuery.isValidating)
@@ -124,10 +187,49 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
   }, [getConversationQuery]);
 
   const handleChatSubmit = useCallback(
-    async (_message: string) => {
+    async (_message: string, files: File[] = [], isDraft?: Boolean) => {
       const message = _message?.trim?.();
 
       if (!message || !endpoint) {
+        return;
+      }
+
+      const conversationId = state.conversationId || cuid();
+
+      let attachments: CreateAttachmentSchema[] = [];
+
+      if (files?.length > 0) {
+        const filesUrls = await upload(
+          files.map((each) => ({
+            conversationId,
+            agentId: otherProps.agentId!,
+            case: 'chatUpload',
+            fileName: each.name,
+            mimeType: each.type,
+            file: each,
+          }))
+        );
+        attachments = files.map((each, index) => ({
+          name: each.name,
+          url: filesUrls[index],
+          size: each.size,
+          mimeType: each.type,
+        }));
+      }
+
+      if (
+        channel &&
+        channel !== 'dashboard' &&
+        getConversationQuery?.data &&
+        !getConversationQuery?.data?.[0]?.isAiEnabled
+      ) {
+        await conversationChatMutation.trigger({
+          from: 'human',
+          message,
+          channel,
+          visitorId: state.visitorId,
+        });
+        await getConversationQuery.mutate();
         return;
       }
 
@@ -142,7 +244,17 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
       }
 
       const ctrl = new AbortController();
-      const history = [...state.history, { from: 'human', message }];
+      const history = [
+        ...state.history,
+        {
+          from: 'human',
+          message,
+          attachments: attachments.map((each, index) => ({
+            id: index,
+            ...each,
+          })),
+        },
+      ];
       const nextIndex = history.length;
 
       setState({
@@ -160,9 +272,10 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
         let buffer = '';
         let bufferStep = '';
         let bufferEndpointResponse = '';
+        let bufferToolCall = '';
+        let bufferMetadata = '';
         class RetriableError extends Error {}
         class FatalError extends Error {}
-
         await fetchEventSource(endpoint, {
           method: 'POST',
           headers: {
@@ -175,8 +288,12 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
             streaming: true,
             query: message,
             visitorId: state.visitorId,
-            conversationId: state.conversationId,
+            conversationId: conversationId,
             channel,
+            attachments,
+            isDraft,
+            contact: otherProps.contact,
+            context: otherProps.context,
           }),
           signal: ctrl.signal,
 
@@ -227,20 +344,36 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
               console.log('[response]', bufferEndpointResponse);
 
               try {
-                const { sources, conversationId, visitorId, messageId } =
-                  JSON.parse(bufferEndpointResponse) as ChatResponse;
+                const {
+                  sources,
+                  conversationId,
+                  visitorId,
+                  messageId,
+                  isValid,
+                } = JSON.parse(bufferEndpointResponse) as ChatResponse & {
+                  isValid: boolean;
+                };
 
                 const h = [...history];
+
+                let metadata = {};
+
+                try {
+                  metadata = JSON.parse(bufferMetadata || '{}');
+                } catch {}
 
                 if (h?.[nextIndex]) {
                   h[nextIndex].message = `${buffer}`;
                   (h[nextIndex] as any).id = messageId;
+                  (h[nextIndex] as any).metadata = metadata;
                 } else {
                   h.push({
                     id: messageId,
                     from: 'agent',
                     message: buffer,
                     sources,
+                    metadata,
+                    attachments: [],
                   });
                 }
 
@@ -249,6 +382,7 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
                   conversationId,
                   prevConversationId: state.conversationId,
                   visitorId,
+                  isFormValid: isValid,
                 });
 
                 try {
@@ -258,18 +392,35 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
                     conversationId || ''
                   );
                 } catch {}
+
+                // ApprovalRequired case returns an empty message. Refresh ui to display associated approval requests.
+                if (buffer?.trim() === '') {
+                  setTimeout(() => {
+                    getConversationQuery.mutate();
+                  }, 1000);
+                }
               } catch (err) {
                 console.log(err);
               }
             } else if (event.data?.startsWith('[ERROR]')) {
               ctrl.abort();
 
+              let message = event.data.replace('[ERROR]', '');
+
+              if (message === ApiErrorType.USAGE_LIMIT) {
+                if (!channel || channel === 'dashboard') {
+                  message = `Message limit reached. Please upgrade your plan to get higher usage.`;
+                } else {
+                  return;
+                }
+              }
+
               setState({
                 history: [
                   ...history,
                   {
                     from: 'agent',
-                    message: event.data.replace('[ERROR]', ''),
+                    message,
                   } as any,
                 ],
               });
@@ -285,7 +436,34 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
               if (h?.[nextIndex]) {
                 h[nextIndex].message = `${bufferStep}`;
               } else {
-                h.push({ from: 'agent', message: bufferStep });
+                h.push({ from: 'agent', message: bufferStep, attachments: [] });
+              }
+
+              setState({
+                history: h as any,
+              });
+            } else if (event.event === SSE_EVENT.metadata) {
+              bufferMetadata += decodeURIComponent(event.data) as string;
+            } else if (event.event === SSE_EVENT.tool_call) {
+              bufferToolCall += event.data as string;
+
+              const h = [...history];
+
+              if (h?.[nextIndex]) {
+                (h[nextIndex] as any).step = {
+                  type: 'tool_call',
+                  // description: bufferToolCall,
+                };
+              } else {
+                h.push({
+                  from: 'agent',
+                  message: '',
+                  step: {
+                    type: 'tool_call',
+                    // description: bufferToolCall,
+                  },
+                  attachments: [],
+                });
               }
 
               setState({
@@ -301,7 +479,7 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
               if (h?.[nextIndex]) {
                 h[nextIndex].message = `${buffer}`;
               } else {
-                h.push({ from: 'agent', message: buffer });
+                h.push({ from: 'agent', message: buffer, attachments: [] });
               }
 
               setState({
@@ -412,9 +590,13 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
             message: message?.text!,
             createdAt: message?.createdAt!,
             sources: message?.sources as Source[],
+            approvals: message?.approvals || [],
+            metadata: message?.metadata || ({} as any),
+            attachments: message?.attachments || ([] as Attachment[]),
           })),
         conversationStatus:
           getConversationQuery.data[0]?.status ?? state.conversationStatus,
+        isAiEnabled: getConversationQuery?.data?.[0]?.isAiEnabled,
       });
     }
   }, [getConversationQuery.data]);
@@ -435,10 +617,12 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
       return;
     }
 
-    // Conversation changed, reset history (for conversation switching)
-    setState({
-      history: [],
-    });
+    // New conversation, reset history (for conversation switching)
+    if (!state.conversationId) {
+      setState({
+        history: [],
+      });
+    }
   }, [state.conversationId]);
 
   useEffect(() => {
@@ -467,6 +651,7 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
     history: state.history,
     isLoadingConversation: getConversationQuery.isLoading,
     isValidatingConversation: getConversationQuery.isValidating,
+    isFomValid: state.isFormValid,
     hasMoreMessages: state.hasMoreMessages,
     visitorId: state.visitorId,
     conversationId: state.conversationId,
@@ -474,6 +659,7 @@ const useChat = ({ endpoint, channel, queryBody, ...otherProps }: Props) => {
     conversationStatus: state.conversationStatus as ConversationStatus,
     visitorEmail: getConversationQuery?.data?.[0]?.lead?.email || '',
     isStreaming: state.isStreaming,
+    isAiEnabled: state.isAiEnabled,
     createNewConversation,
     handleChatSubmit,
     handleLoadMoreMessages: handleLoadMoreMessages,

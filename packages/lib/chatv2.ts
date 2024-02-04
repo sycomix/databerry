@@ -1,10 +1,12 @@
-import { ChatOpenAI } from 'langchain/chat_models/openai';
-import { AIMessage, BaseMessage, HumanMessage } from 'langchain/schema';
+import { ChatCompletionMessageParam } from 'openai/resources';
 
 import { AgentModelName, Message, MessageFrom } from '@chaindesk/prisma';
 
 import { ChatModelConfigSchema, ChatResponse } from './types/dtos';
+import ChatModel from './chat-model';
 import { ModelConfig } from './config';
+import formatMessagesOpenAI from './format-messages-openai';
+import getUsageCost from './get-usage-cost';
 import truncateChatMessages from './truncateChatMessages';
 
 export type ChatProps = ChatModelConfigSchema & {
@@ -13,7 +15,9 @@ export type ChatProps = ChatModelConfigSchema & {
   modelName?: AgentModelName;
   history?: Message[];
   abortController?: any;
-  initialMessages?: BaseMessage[] | undefined;
+  initialMessages?: ChatCompletionMessageParam[] | undefined;
+  context?: string;
+  useXpContext?: boolean;
 };
 
 const chat = async ({
@@ -24,67 +28,62 @@ const chat = async ({
   initialMessages = [],
   modelName = AgentModelName.gpt_3_5_turbo,
   abortController,
+  context,
+  useXpContext,
   ...otherProps
 }: ChatProps) => {
-  const model = new ChatOpenAI({
-    streaming: Boolean(stream),
-    modelName: ModelConfig[modelName]?.name,
-
-    temperature: temperature || 0,
-    topP: otherProps.topP,
-    frequencyPenalty: otherProps.frequencyPenalty,
-    presencePenalty: otherProps.presencePenalty,
-    maxTokens: otherProps.maxTokens,
-
-    callbacks: [
-      {
-        handleLLMNewToken: stream,
-      },
-    ],
-  });
-
-  if (process.env.APP_ENV === 'test') {
-    model.call = async (props: any) => {
-      const res = {
-        text: 'Hello world',
-      } as any;
-
-      if (stream) {
-        stream(res.text);
-      }
-
-      return res;
-    };
-  }
-
   const truncatedHistory = (
     await truncateChatMessages({
-      messages: (history || [])
-        ?.map((each) => {
-          if (each.from === MessageFrom.human) {
-            return new HumanMessage(each.text);
-          }
-          return new AIMessage(each.text);
-        })
-        .reverse(),
+      messages: formatMessagesOpenAI(history || []).reverse(),
       maxTokens: ModelConfig[modelName]?.maxTokens * 0.3, // 30% tokens limit for history
     })
   ).reverse();
 
-  const messages = [
+  const messages: ChatCompletionMessageParam[] = [
     ...initialMessages,
     ...truncatedHistory,
-    new HumanMessage(prompt),
+    ...((useXpContext && context
+      ? [
+          {
+            role: 'function',
+            content: context!,
+            name: 'knowledge_base_retrieval',
+          },
+        ]
+      : []) as ChatCompletionMessageParam[]),
+    { role: 'user', content: prompt },
   ];
 
-  const output = await model.call(messages, {
+  const model = new ChatModel({});
+
+  const output = await model.call({
+    handleStream: stream,
+    model: ModelConfig[modelName]?.name,
+    messages,
+
+    temperature: temperature || 0,
+    top_p: otherProps.topP,
+    frequency_penalty: otherProps.frequencyPenalty,
+    presence_penalty: otherProps.presencePenalty,
+    max_tokens: otherProps.maxTokens,
     signal: abortController?.signal,
   });
 
-  const answer = output?.content.trim?.();
+  const answer = output?.answer;
+
+  const usage = {
+    completionTokens: output?.usage?.completion_tokens,
+    promptTokens: output?.usage?.prompt_tokens,
+    totalTokens: output?.usage?.total_tokens,
+    cost: getUsageCost({
+      modelName,
+      usage: output?.usage!,
+    }),
+  };
 
   return {
     answer,
+    usage,
     sources: [] as any,
   } as ChatResponse;
 };

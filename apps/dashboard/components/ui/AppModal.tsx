@@ -1,12 +1,14 @@
 import Modal from '@mui/joy/Modal';
+import ModalClose from '@mui/joy/ModalClose';
 import ModalDialog from '@mui/joy/ModalDialog';
 import React, { ComponentProps } from 'react';
 
 import SettingCard from './SettingCard';
 
 type Props = {
-  title?: string;
+  title?: string | JSX.Element;
   description?: string;
+  disableClose?: boolean;
 
   children?: React.ReactNode;
   modalProps?: Partial<ComponentProps<typeof Modal>>;
@@ -14,7 +16,14 @@ type Props = {
 };
 
 export default React.forwardRef(function AppModal(
-  { title, description, dialogProps, modalProps, children }: Props,
+  {
+    title,
+    description,
+    disableClose,
+    dialogProps,
+    modalProps,
+    children,
+  }: Props,
   ref
 ) {
   return (
@@ -55,6 +64,8 @@ export default React.forwardRef(function AppModal(
             },
           }}
         >
+          {!disableClose && <ModalClose variant="plain" />}
+
           {children}
         </SettingCard>
       </ModalDialog>

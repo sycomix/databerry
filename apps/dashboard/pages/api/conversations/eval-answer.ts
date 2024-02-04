@@ -1,6 +1,7 @@
 import Cors from 'cors';
 import { NextApiResponse } from 'next';
 
+import { AnalyticsEvents, capture } from '@chaindesk/lib/analytics-server';
 import { ApiError, ApiErrorType } from '@chaindesk/lib/api-error';
 import {
   createLazyAuthHandler,
@@ -57,6 +58,18 @@ export const evalAnswer = async (
       eval: data.eval,
     },
   });
+
+  if (session?.user?.id || data.visitorId) {
+    capture?.({
+      event: AnalyticsEvents.BUTTON_CLICK,
+      payload: {
+        userId: session?.user?.id || data.visitorId,
+        organizationId: session?.organization?.id,
+        action: 'Eval Answer',
+        value: data.eval,
+      },
+    });
+  }
 
   return updated;
 };

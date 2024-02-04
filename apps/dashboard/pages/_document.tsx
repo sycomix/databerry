@@ -8,6 +8,8 @@ import Document, {
 } from 'next/document';
 import Script from 'next/script';
 
+import { themeKeys } from '@app/utils/themes/dashboard';
+
 class CustomDocument extends Document {
   static async getInitialProps(ctx: DocumentContext) {
     const initialProps = await Document.getInitialProps(ctx);
@@ -19,17 +21,11 @@ class CustomDocument extends Document {
     return (
       <Html>
         <Head>
-          <meta name="viewport" content="initial-scale=1, width=device-width" />
-
           <meta
-            property="og:image"
-            content="https://www.chaindesk.ai/og-image.png"
+            key="viewport"
+            name="viewport"
+            content="initial-scale=1, width=device-width"
           />
-          <meta
-            property="twitter:image"
-            content="https://www.chaindesk.ai/og-image.png"
-          />
-          <meta property="twitter:card" content="summary_large_image" />
 
           <link
             rel="stylesheet"
@@ -40,6 +36,11 @@ class CustomDocument extends Document {
             href="https://fonts.googleapis.com/css2?family=Josefin+Sans:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap"
             rel="stylesheet"
           />
+
+          {/* <link
+            href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200;12..96,300;12..96,500;12..96,600;12..96,700;12..96,800&display=swap"
+            rel="stylesheet"
+          /> */}
 
           {process.env.NEXT_PUBLIC_GA_ID && (
             <Script
@@ -73,6 +74,23 @@ class CustomDocument extends Document {
             </Script>
           )}
 
+          {process.env.NEXT_PUBLIC_FACEBOOK_PIXEL_ID && (
+            <Script id="facebook-pixel" strategy="afterInteractive">
+              {`
+                  !function(f,b,e,v,n,t,s)
+                  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                  n.queue=[];t=b.createElement(e);t.async=!0;
+                  t.src=v;s=b.getElementsByTagName(e)[0];
+                  s.parentNode.insertBefore(t,s)}(window, document,'script',
+                  'https://connect.facebook.net/en_US/fbevents.js');
+                  fbq('init', ${process.env.NEXT_PUBLIC_FACEBOOK_PIXEL_ID});
+                  fbq('track', 'PageView');
+                `}
+            </Script>
+          )}
+
           <script
             async
             src="https://r.wdfl.co/rw.js"
@@ -83,7 +101,30 @@ class CustomDocument extends Document {
           </Script>
         </Head>
         <body>
-          {getInitColorSchemeScript()}
+          {getInitColorSchemeScript({
+            colorSchemeStorageKey: themeKeys.colorSchemeStorageKey,
+            attribute: themeKeys.attribute,
+            modeStorageKey: themeKeys.modeStorageKey,
+          })}
+          <script
+            id="bind-joy-and-tailwindcss"
+            dangerouslySetInnerHTML={{
+              __html: `
+                (function() {
+                  try {
+                    const mode = document.documentElement.getAttribute(
+                      '${themeKeys.attribute}'
+                    );
+    
+                    if (mode) {
+                      document.body.classList.add(mode);
+                    }
+    
+                  }catch {}
+                })()
+              `,
+            }}
+          ></script>
           <Main />
           <NextScript />
         </body>

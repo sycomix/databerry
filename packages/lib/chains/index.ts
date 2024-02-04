@@ -19,6 +19,7 @@ import { ChatRequest } from '@chaindesk/lib/types/dtos';
 import {
   Agent,
   Datastore,
+  Form,
   Message,
   MessageFrom,
   Tool,
@@ -35,6 +36,7 @@ import qa from './qa';
 
 type ToolExtended = Tool & {
   datastore: Datastore | null;
+  form: Form | null;
 };
 
 export type AgentWithTools = Agent & {
@@ -82,10 +84,13 @@ export default class ChainManager {
     history?: Message[] | undefined;
     temperature?: ChatRequest['temperature'];
     filters?: ChatRequest['filters'];
-    promptType?: ChatRequest['promptType'];
-    promptTemplate?: ChatRequest['promptTemplate'];
+    systemPrompt?: ChatRequest['systemPrompt'];
+    userPrompt?: ChatRequest['userPrompt'];
     httpResponse?: any;
     abortController?: any;
+
+    promptType?: ChatRequest['promptType'];
+    promptTemplate?: ChatRequest['promptTemplate'];
   }) {
     if (filters?.datasource_ids?.length || filters?.datastore_ids?.length) {
       return qa({
@@ -100,9 +105,13 @@ export default class ChainManager {
 
     return chat({
       initialMessages: [
-        new SystemMessage(
-          `You are a productivity assistant. Please provide a helpful and professional response to the user's question or issue.`
-        ),
+        {
+          role: 'system',
+          content: `You are a productivity assistant. Please provide a helpful and professional response to the user's question or issue.`,
+        },
+        // new SystemMessage(
+        //   `You are a productivity assistant. Please provide a helpful and professional response to the user's question or issue.`
+        // ),
       ],
       prompt: input,
       temperature: temperature || 0.5,
