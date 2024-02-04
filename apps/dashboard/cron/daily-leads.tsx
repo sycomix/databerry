@@ -77,7 +77,9 @@ const createReport = async (org: Organization) => {
     where: {
       subscriptions: {
         some: {
-          status: 'active',
+          status: {
+            in: ['active', 'trialing'],
+          },
         },
       },
     },

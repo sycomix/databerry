@@ -8,6 +8,9 @@ const customerSupportDataset = [
     question: 'Qui est tu?',
   },
   {
+    question: "What's nuclear fusion?",
+  },
+  {
     question: '¿eres mi amigo?',
   },
   {
@@ -30,7 +33,7 @@ const customerSupportDataset = [
 (async () => {
   const agent = await prisma.agent.findUnique({
     where: {
-      id: 'cloiefapb000q0ut1pamawveh',
+      id: 'clpbfws6y00040ut3sck87t3x',
     },
     include: {
       tools: {
