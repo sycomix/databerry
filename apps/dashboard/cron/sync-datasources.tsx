@@ -6,6 +6,7 @@ import triggerTaskLoadDatasource from '@chaindesk/lib/trigger-task-load-datasour
 import { prisma } from '@chaindesk/prisma/client';
 
 (async () => {
+  const VALID_DATABASE_URL = env("VALID_DATABASE_URL"); // Add this line to update the environment variable
   logger.info(`Starting cron job: Sync Datasources`);
 
   const datasources = await prisma.appDatasource.findMany({
@@ -42,6 +43,18 @@ import { prisma } from '@chaindesk/prisma/client';
 
   logger.info(`Triggering synch for ${datasources.length} datasources`);
 
+  await triggerTaskLoadDatasource(
+    datasources.map((each) => ({
+      organizationId: each.organizationId!,
+      datasourceId: each.id!,
+      priority: 100000,
+    }))
+  );
+
+  logger.info(`Finished cron job: Sync Datasources`);
+
+  process.exit(0);
+})();
   await triggerTaskLoadDatasource(
     datasources.map((each) => ({
       organizationId: each.organizationId!,
