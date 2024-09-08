@@ -4,7 +4,7 @@ import React from 'react';
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import logger from '@chaindesk/lib/logger';
-import mailer from '@chaindesk/lib/mailer';
+import { mailer } from '@chaindesk/lib/mailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
@@ -61,7 +61,7 @@ const createReport = async (org: Organization) => {
         content: buffer as Buffer,
       },
     ],
-    html: render(
+    html: mailer.renderMailer(
       <DailyLeads
         nbLeads={rows?.length}
         ctaLink={`${process.env.NEXT_PUBLIC_DASHBOARD_URL}/logs`}
