@@ -8,6 +8,12 @@ import { prisma } from '@chaindesk/prisma/client';
 (async () => {
   logger.info(`Starting cron job: Sync Datasources`);
 
+  const DATABASE_URL = env("DATABASE_URL");
+  if (!DATABASE_URL) {
+    logger.error('DATABASE_URL is empty');
+    process.exit(1);
+  }
+
   const datasources = await prisma.appDatasource.findMany({
     where: {
       group: {
