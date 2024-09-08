@@ -1,4 +1,4 @@
-import { Queue } from 'bullmq';
+import { QueuePro } from './queue-pro';
 
 import { ScriptsPro } from '../classes/scripts-pro';
 import { GroupStatus } from '../enums/group-status';
@@ -6,7 +6,7 @@ import { GroupStatus } from '../enums/group-status';
 import { JobPro } from './job-pro';
 import { RedisConnectionPro } from './redis-connection-pro';
 const MAX_GROUP_DELETE_ITER = 100;
-export class QueuePro extends Queue {
+export class Queue extends QueuePro {
     constructor(name, opts) {
         super(name, opts, RedisConnectionPro);
         this.scripts = new ScriptsPro(this);
