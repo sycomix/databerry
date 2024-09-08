@@ -4,6 +4,32 @@ import React from 'react';
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
 import logger from '@chaindesk/lib/logger';
+import { Lead, Organization, Prisma } from '@chaindesk/prisma';
+import { prisma } from '@chaindesk/prisma/client';
+
+const createReport = async (org: Organization) => {
+  const now = new Date();
+  const ystd = new Date();
+  ystd.setDate(now.getDate() - 1);
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      organizationId: org.id,
+      createdAt: {
+        gte: ystd,
+        lte: now,
+      },
+    },
+    include: {
+      agent: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
+import logger from '@chaindesk/lib/logger';
 import mailer from '@chaindesk/lib/mailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
@@ -67,6 +93,8 @@ const createReport = async (org: Organization) => {
         ctaLink={`${process.env.NEXT_PUBLIC_DASHBOARD_URL}/logs`}
       />
     ),
+  // nodemailer configuration options
+});
   });
 };
 
