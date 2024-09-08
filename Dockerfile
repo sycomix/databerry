@@ -54,7 +54,7 @@ ARG NEXT_PUBLIC_POSTHOG_HOST
 ARG NEXT_PUBLIC_MIXPANEL_TOKEN
 ARG NEXT_PUBLIC_FACEBOOK_PIXEL_ID
 
-# RUN NODE_OPTIONS="--max_old_space_size=4096" npm run build
+RUN NODE_OPTIONS="--max_old_space_size=4096" npm run build
 
 RUN NODE_OPTIONS="--max_old_space_size=4096" pnpm turbo run build --filter=${SCOPE}...
 
