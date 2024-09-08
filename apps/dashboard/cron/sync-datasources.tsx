@@ -6,6 +6,10 @@ import triggerTaskLoadDatasource from '@chaindesk/lib/trigger-task-load-datasour
 import { prisma } from '@chaindesk/prisma/client';
 
 (async () => {
+  if (!process.env.DATABASE_URL) {
+    logger.error('The DATABASE_URL environment variable is empty. Please set this variable before running the syncDatasources cron job.');
+    process.exit(1);
+  }
   logger.info(`Starting cron job: Sync Datasources`);
 
   const datasources = await prisma.appDatasource.findMany({
