@@ -32,6 +32,11 @@ import { prisma } from '@chaindesk/prisma/client';
             },
           },
         },
+        subscriptions: {
+          some: {
+            status: 'active',
+          },
+        },
       },
     },
     select: {
