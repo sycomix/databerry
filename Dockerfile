@@ -1,4 +1,17 @@
 FROM node:18-alpine AS base
+
+# Set environment variables
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+
+# Copy the .env.local file
+COPY apps/dashboard/.env.local .env.local
+
+# Install dependencies
+RUN npm install
+
+# Run the syncDatasources script
+CMD ["npm", "run", "syncDatasources"]
 ARG SCOPE
 ENV SCOPE=${SCOPE}
 
@@ -24,7 +37,14 @@ COPY .npmrc ./
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
-RUN pnpm install
+CMD ["npm", "run", "syncDatasources"]
+
+# Set environment variables
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+
+# Copy the .env.local file
+COPY apps/dashboard/.env.local .env.local
 
 RUN rm -rf node_modules/.pnpm/canvas@2.11.2
 
