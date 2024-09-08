@@ -1,4 +1,12 @@
 import { DatasourceType } from '@prisma/client';
+import { PrismaClient, PrismaClientValidationError, PrismaClientKnownRequestError } from '@prisma/client';
+import { DATABASE_URL } from 'process';
+
+if (!DATABASE_URL) {
+  logger.error('DATABASE_URL environment variable is missing or invalid.');
+  process.exit(1);
+}
+import { PrismaClient, PrismaClientValidationError, PrismaClientKnownRequestError } from '@prisma/client';
 import pMap from 'p-map';
 
 import logger from '@chaindesk/lib/logger';
