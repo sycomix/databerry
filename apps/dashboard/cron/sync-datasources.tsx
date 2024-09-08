@@ -5,6 +5,10 @@ import logger from '@chaindesk/lib/logger';
 import triggerTaskLoadDatasource from '@chaindesk/lib/trigger-task-load-datasource';
 import { prisma } from '@chaindesk/prisma/client';
 
+if (!process.env.DATABASE_URL) {
+  throw new Error('The DATABASE_URL environment variable is not set. Please set this variable in your environment and try again.');
+}
+
 (async () => {
   logger.info(`Starting cron job: Sync Datasources`);
 
