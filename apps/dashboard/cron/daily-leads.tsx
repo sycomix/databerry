@@ -3,8 +3,14 @@ import React from 'react';
 
 import { DailyLeads, render } from '@chaindesk/emails';
 import { generateExcelBuffer } from '@chaindesk/lib/export/excel-export';
+import { config } from 'dotenv';
+import { pathToFileURL } from 'node:url';
+
+config();
 import logger from '@chaindesk/lib/logger';
-import mailer from '@chaindesk/lib/mailer';
+import { createTransport } from 'nodemailer';
+import { register } from 'node:module';
+import { createTransport } from 'nodemailer';
 import { Lead, Organization, Prisma } from '@chaindesk/prisma';
 import { prisma } from '@chaindesk/prisma/client';
 
@@ -48,7 +54,8 @@ const createReport = async (org: Organization) => {
 
   const buffer = await generateExcelBuffer<Lead>({ header, rows });
 
-  await mailer.sendMail({
+  const transporter = createTransport();
+  await transporter.sendMail({
     from: {
       name: 'Chaindesk',
       address: process.env.EMAIL_FROM!,
